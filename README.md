@@ -7,7 +7,7 @@
 - **模组ID**: `more_attributes`
 - **Minecraft版本**: 1.20.1
 - **Forge版本**: 47.4.21
-- **许可证**: GNU GPL 3.0
+- **许可证**: [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 - **作者**: Fu_Meng
 
 ## 核心属性
@@ -142,8 +142,8 @@
 
 配置文件位置：`config/more_attributes_config.toml`
 
-| 配置项                            | 类型      | 默认值   | 说明                    |
-|--------------------------------|---------|-------|-----------------------|
-| `hungerRateAffectRegeneration` | Boolean | false | 饥饿速率是否影响回血时的消耗        |
-| `strongerTrueDamage`           | Boolean | false | 开启后真实伤害直接修改生命值，无视无敌时间 |
-| `unlimitedLiftSteal`           | Boolean | false | 生命窃取能否吸取比造成伤害更多的血量    |
+| 配置项                            | 类型      | 默认值   | 说明                 |
+|--------------------------------|---------|-------|--------------------|
+| `hungerRateAffectRegeneration` | Boolean | false | 饥饿速率是否影响回血时的消耗     |
+| `strongerTrueDamage`           | Boolean | false | 开启后会增强真实伤害的效果      |
+| `unlimitedLiftSteal`           | Boolean | false | 生命窃取能否吸取比造成伤害更多的血量 |
