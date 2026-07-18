@@ -1,0 +1,21 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.fu_meng.more_attributes.mixin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "more_attributes.refmap.json",
+  "mixins": [
+    "AttributeMapMixin",
+    "FoodDataMixin",
+    "LivingEntityMixin",
+    "PlayerMixin"
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

@@ -1,0 +1,103 @@
+package com.fu_meng.more_attributes.tooltip;
+
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.TooltipFlag;
+
+import static com.fu_meng.more_attributes.AttributesRegistry.*;
+
+public class AttributeFormatter {
+
+    public static MutableComponent formatAttribute(Attribute attribute, AttributeModifier modifier, TooltipFlag flag) {
+        double itemValue = modifier.getAmount();
+
+        if (itemValue == 0) {
+            return null;
+        }
+
+        String attributeName = getLocalizedAttributeName(attribute);
+
+        if (attribute.equals(INCOMING_DAMAGE_CAP.get())) {
+            return formatIncomingDamageCap(itemValue, attributeName, modifier, flag);
+        }
+
+        // 非 ADDITION 操作追加"效力"后缀以示区分
+        if (modifier.getOperation() != AttributeModifier.Operation.ADDITION) {
+            attributeName += " " + Component.translatable("attribute.modifier.potency").getString();
+        }
+
+        return formatPercentage(itemValue, attributeName, modifier, flag);
+    }
+
+    private static MutableComponent formatIncomingDamageCap(double itemValue, String attributeName, AttributeModifier modifier, TooltipFlag flag) {
+        MutableComponent comp;
+        if (modifier.getOperation() == AttributeModifier.Operation.ADDITION) {
+            String formattedValue = ItemStack.ATTRIBUTE_MODIFIER_FORMAT.format(itemValue);
+            comp = Component.literal(attributeName + ": " + formattedValue).withStyle(ChatFormatting.BLUE);
+        } else {
+            double percentage = (1 + itemValue) * 100;
+            String formattedValue = ItemStack.ATTRIBUTE_MODIFIER_FORMAT.format(percentage);
+            comp = Component.literal(attributeName + ": " + formattedValue + "%").withStyle(ChatFormatting.BLUE);
+        }
+
+        if (flag.isAdvanced()) {
+            comp.append(Component.literal(" " + formatAdvancedTooltip(itemValue, modifier)).withStyle(ChatFormatting.GRAY));
+        }
+        return comp;
+    }
+
+    public static boolean isPercentageAttribute(Attribute attribute) {
+        return attribute.equals(EVASION.get()) || attribute.equals(HIT_RATE.get())
+                || attribute.equals(FINAL_EVASION.get()) || attribute.equals(FINAL_HIT_RATE.get())
+                || attribute.equals(IGNORE_INVINCIBLE_TIME.get()) || attribute.equals(INVINCIBLE_TIME.get())
+                || attribute.equals(PHYSICAL_DAMAGE_REDUCTION.get()) || attribute.equals(MAGIC_DAMAGE_REDUCTION.get())
+                || attribute.equals(DAMAGE_REDUCTION.get()) || attribute.equals(ENVIRONMENTAL_DAMAGE_REDUCTION.get())
+                || attribute.equals(TRUE_DAMAGE_RATIO.get()) || attribute.equals(MAGIC_DAMAGE_RATIO.get())
+                || attribute.equals(EATING_SPEED.get()) || attribute.equals(DRAW_SPEED.get())
+                || attribute.equals(ARROW_DAMAGE.get()) || attribute.equals(ARROW_VELOCITY.get())
+                || attribute.equals(CRITICAL_CHANCE.get()) || attribute.equals(CRITICAL_DAMAGE.get())
+                || attribute.equals(MINING_SPEED.get());
+    }
+
+    /**
+     * 判断该属性是否需要用自定义格式替换原版提示行（百分比属性与伤害上限）。
+     */
+    public static boolean isCustomFormattedAttribute(Attribute attribute) {
+        return isPercentageAttribute(attribute) || attribute.equals(INCOMING_DAMAGE_CAP.get());
+    }
+
+    private static String getLocalizedAttributeName(Attribute attribute) {
+        // 获取本地化的属性名称
+        return Component.translatable(attribute.getDescriptionId()).getString();
+    }
+
+    private static MutableComponent formatPercentage(double itemValue, String name, AttributeModifier modifier, TooltipFlag flag) {
+        double percentage = itemValue * 100;
+        String formattedValue = ItemStack.ATTRIBUTE_MODIFIER_FORMAT.format(percentage);
+
+        MutableComponent comp;
+        if (itemValue > 0) {
+            comp = Component.literal("+" + formattedValue + "% " + name).withStyle(ChatFormatting.BLUE);
+        } else {
+            comp = Component.literal(formattedValue + "% " + name).withStyle(ChatFormatting.RED);
+        }
+
+        if (flag.isAdvanced()) {
+            comp.append(Component.literal(" " + formatAdvancedTooltip(itemValue, modifier)).withStyle(ChatFormatting.GRAY));
+        }
+        return comp;
+    }
+
+    private static String formatAdvancedTooltip(double value, AttributeModifier modifier) {
+        String formatted = ItemStack.ATTRIBUTE_MODIFIER_FORMAT.format(value);
+        return switch (modifier.getOperation()) {
+            case ADDITION -> value > 0 ? "[+" + formatted + "]" : "[" + formatted + "]";
+            case MULTIPLY_BASE -> value > 0 ? "[+" + formatted + "x]" : "[" + formatted + "x]";
+            case MULTIPLY_TOTAL -> "[x" + formatted + "]";
+        };
+    }
+}
