@@ -1,15 +1,12 @@
-package com.fu_meng.more_attributes.attributes;
+package com.fu_meng.more_attributes.handler;
 
 import com.fu_meng.more_attributes.api.AttributeCalculationHelper;
 import com.fu_meng.more_attributes.api.HurtManager;
 import com.fu_meng.more_attributes.mixin.LivingEntityMixin;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.tags.DamageTypeTags;
-import net.minecraft.tags.TagKey;
 import net.minecraft.world.damagesource.CombatRules;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
@@ -35,8 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import static com.fu_meng.more_attributes.AttributesRegistry.*;
-import static com.fu_meng.more_attributes.MAConfig.strongerTrueDamage;
-import static com.fu_meng.more_attributes.MAConfig.unlimitedLiftSteal;
+import static com.fu_meng.more_attributes.MAConfig.*;
 import static com.fu_meng.more_attributes.MoreAttributesMod.LOGGER;
 import static com.fu_meng.more_attributes.MoreAttributesMod.queueServerWork;
 import static com.fu_meng.more_attributes.api.HurtManager.isOnDealExtraDamage;
@@ -66,10 +62,12 @@ public class AttributesHandler {
         }
 
         // 伤害转化前的伤害记录
-        double trueDamageRatio = attacker.getAttributeValue(TRUE_DAMAGE_RATIO.get());
-        double magicDamageRatio = attacker.getAttributeValue(MAGIC_DAMAGE_RATIO.get());
-        if (trueDamageRatio > 0 || magicDamageRatio > 0) {
-            DAMAGE_RECORD.put(attacker.getUUID(), damage);
+        if (!isOnDealExtraDamage()) {
+            double trueDamageRatio = attacker.getAttributeValue(TRUE_DAMAGE_RATIO.get());
+            double magicDamageRatio = attacker.getAttributeValue(MAGIC_DAMAGE_RATIO.get());
+            if (trueDamageRatio > 0 || magicDamageRatio > 0) {
+                DAMAGE_RECORD.put(attacker.getUUID(), damage);
+            }
         }
     }
 
@@ -114,7 +112,12 @@ public class AttributesHandler {
         }
 
         // 判断伤害源是否属于魔法
-        if (source.is(TagKey.create(Registries.DAMAGE_TYPE, ResourceLocation.fromNamespaceAndPath("more_attributes", "is_magic_damage")))) {
+        boolean isMagicDamage = source.typeHolder()
+                .unwrapKey()
+                .map(key -> consideredMagicDamage.contains(key.location()))
+                .orElse(false);;
+
+        if (isMagicDamage) {
             // 魔法伤害减免
             amount *= (float) AttributeCalculationHelper.getMagicDamageFactor(victim);
 
@@ -152,7 +155,7 @@ public class AttributesHandler {
         event.setAmount(amount);
 
         // 伤害转化前的伤害记录
-        if (attacker != null) {
+        if (attacker != null && !isOnDealExtraDamage()) {
             double trueDamageRatio = attacker.getAttributeValue(TRUE_DAMAGE_RATIO.get());
             double magicDamageRatio = attacker.getAttributeValue(MAGIC_DAMAGE_RATIO.get());
             if (trueDamageRatio > 0 || magicDamageRatio > 0) {

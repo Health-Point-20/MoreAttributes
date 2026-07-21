@@ -14,31 +14,31 @@
 
 ### 对所有生物生效
 
-| 属性名称    | 标识符                              | 默认值                 |
-|---------|----------------------------------|---------------------|
-| 受到伤害上限  | `incoming_damage_cap`            | 0.0 (范围: 0.0 ~ ∞)   |
-| 物理伤害减免  | `physical_damage_reduction`      | 0.0 (范围: -∞ ~ 1.0)  |
-| 魔法伤害减免  | `magic_damage_reduction`         | 0.0 (范围: -∞ ~ 1.0)  |
-| 环境伤害减免  | `environmental_damage_reduction` | 0.0 (范围: -∞ ~ 1.0)  |
-| 伤害减免    | `damage_reduction`               | 0.0 (范围: -∞ ~ 1.0)  |
-| 魔法护甲值   | `magic_armor`                    | 0                   |
-| 魔法护甲韧性  | `magic_armor_toughness`          | 0                   |
-| 闪避率     | `evasion`                        | 0.0 (范围: 0.0 ~ 1.0) |
-| 命中率     | `hit_rate`                       | 1.0                 |
-| 最终命中率   | `final_hit_rate`                 | 0.0 (范围: -∞ ~ ∞)    |
-| 最终闪避率   | `final_evasion`                  | 0.0 (范围: -∞ ~ ∞)    |
-| 削减无敌时间  | `ignore_invincible_time`         | 0.0 (范围: -∞ ~ 1.0)  |
-| 无敌时间    | `invincible_time`                | 1.0                 |
-| 箭矢伤害    | `arrow_damage`                   | 1.0                 |
-| 箭矢速度    | `arrow_velocity`                 | 1.0                 |
-| 暴击率     | `critical_chance`                | 0.0                 |
-| 暴击伤害    | `critical_damage`                | 1.5                 |
-| 真实伤害转化率 | `true_damage_ratio`              | 0.0                 |
-| 额外真实伤害  | `extra_true_damage`              | 0.0                 |
-| 魔法伤害转化率 | `magic_damage_ratio`             | 0.0                 |
-| 额外魔法伤害  | `extra_magic_damage`             | 0.0                 |
-| 生命窃取    | `life_steal`                     | 0.0                 |
-| 再生      | `health_regen`                   | 0.0                 |
+| 属性名称    | 标识符                              | 默认值 |
+|---------|----------------------------------|-----|
+| 受到伤害上限  | `incoming_damage_cap`            | ∞   |
+| 物理伤害减免  | `physical_damage_reduction`      | 0.0 |
+| 魔法伤害减免  | `magic_damage_reduction`         | 0.0 |
+| 环境伤害减免  | `environmental_damage_reduction` | 0.0 |
+| 伤害减免    | `damage_reduction`               | 0.0 |
+| 魔法护甲值   | `magic_armor`                    | 0   |
+| 魔法护甲韧性  | `magic_armor_toughness`          | 0   |
+| 闪避率     | `evasion`                        | 0.0 |
+| 命中率     | `hit_rate`                       | 1.0 |
+| 最终命中率   | `final_hit_rate`                 | 0.0 |
+| 最终闪避率   | `final_evasion`                  | 0.0 |
+| 削减无敌时间  | `ignore_invincible_time`         | 0.0 |
+| 无敌时间    | `invincible_time`                | 1.0 |
+| 箭矢伤害    | `arrow_damage`                   | 1.0 |
+| 箭矢速度    | `arrow_velocity`                 | 1.0 |
+| 暴击率     | `critical_chance`                | 0.0 |
+| 暴击伤害    | `critical_damage`                | 1.5 |
+| 真实伤害转化率 | `true_damage_ratio`              | 0.0 |
+| 额外真实伤害  | `extra_true_damage`              | 0.0 |
+| 魔法伤害转化率 | `magic_damage_ratio`             | 0.0 |
+| 额外魔法伤害  | `extra_magic_damage`             | 0.0 |
+| 生命窃取    | `life_steal`                     | 0.0 |
+| 再生      | `health_regen`                   | 0.0 |
 
 ### 仅对玩家生效
 
@@ -57,19 +57,19 @@
 
 ### 魔法伤害
 
-指伤害类型包含在 `more_attributes:is_magic_damage` tag 的伤害。默认包含：`minecraft:magic`、`minecraft:indirect_magic`、`irons_spellbooks:` 系列、`botania:magic`。
+指伤害类型在配置项 `consideredMagicDamage` 列表中的伤害。默认包含：`minecraft:magic`、`minecraft:indirect_magic`、`irons_spellbooks:` 系列、`botania:magic`。
 
 魔法伤害会同时受到魔法伤害减免、魔法护甲和魔法护甲韧性的减伤。
 
 ### 环境伤害
 
-指来源于环境且**无伤害来源实体**（`source.getEntity() == null`）的伤害。
+符合以下伤害标签/类型列表且**无伤害来源实体**的伤害。
 
 **伤害标签**：`IS_FIRE`、`IS_FALL`、`IS_EXPLOSION`、`IS_DROWNING`、`IS_FREEZING`、`IS_LIGHTNING`
 
 **伤害类型**：`CACTUS`、`SWEET_BERRY_BUSH`、`IN_WALL`、`CRAMMING`、`FALLING_BLOCK`、`FALLING_ANVIL`、`FALLING_STALACTITE`、`FLY_INTO_WALL`、`FELL_OUT_OF_WORLD`、`OUTSIDE_BORDER`
 
-**关键特征**：环境伤害的 `DamageSource.getEntity()` 返回 `null`，无法触发生命窃取等依赖攻击者的属性。
+**关键特征**：环境伤害的 `DamageSource.getEntity()` 返回 `null`，无法触发生命窃取等依赖攻击者的属性。若上述伤害类型存在来源实体（如玩家点燃的爆炸），则不会应用环境伤害减免。
 
 ### 真实伤害
 
@@ -130,7 +130,7 @@
 - 削减无敌时间、无敌时间
 - 各类伤害减免
 - 真实/魔法伤害转化率
-- 进食速度、拉弓速度、箭矢伤害、箭矢速度、暴击率、暴击伤害、挖掘速度
+- 进食速度、拉弓速度、饥饿速率、箭矢伤害、箭矢速度、暴击率、暴击伤害、挖掘速度
 
 **受到伤害上限**：
 - ADDITION 类型：显示具体数值
@@ -142,8 +142,19 @@
 
 配置文件位置：`config/more_attributes_config.toml`
 
-| 配置项                            | 类型      | 默认值   | 说明                 |
-|--------------------------------|---------|-------|--------------------|
-| `hungerRateAffectRegeneration` | Boolean | false | 饥饿速率是否影响回血时的消耗     |
-| `strongerTrueDamage`           | Boolean | false | 开启后会增强真实伤害的效果      |
-| `unlimitedLiftSteal`           | Boolean | false | 生命窃取能否吸取比造成伤害更多的血量 |
+| 配置项                            | 类型           | 默认值   | 说明                 |
+|--------------------------------|--------------|-------|--------------------|
+| `hungerRateAffectRegeneration` | Boolean      | false | 饥饿速率是否影响回血时的消耗     |
+| `strongerTrueDamage`           | Boolean      | false | 开启后会增强真实伤害的效果      |
+| `unlimitedLiftSteal`           | Boolean      | false | 生命窃取能否吸取比造成伤害更多的血量 |
+| `consideredMagicDamage`        | String List  | 见下    | 被视为魔法伤害的伤害类型列表     |
+
+**consideredMagicDamage 默认值**：
+```
+["minecraft:magic", "minecraft:indirect_magic",
+ "irons_spellbooks:fire_magic", "irons_spellbooks:ice_magic",
+ "irons_spellbooks:lightning_magic", "irons_spellbooks:holy_magic",
+ "irons_spellbooks:ender_magic", "irons_spellbooks:blood_magic",
+ "irons_spellbooks:evocation_magic", "irons_spellbooks:poison_magic",
+ "botania:magic"]
+```

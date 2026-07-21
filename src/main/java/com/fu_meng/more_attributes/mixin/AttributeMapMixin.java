@@ -17,7 +17,7 @@ import java.util.Set;
 
 import static com.fu_meng.more_attributes.AttributesRegistry.*;
 import static com.fu_meng.more_attributes.api.AttributeCalculationHelper.getProbability;
-import static com.fu_meng.more_attributes.attributes.AttributesHandler.getIncomingDamageCapValue;
+import static com.fu_meng.more_attributes.handler.AttributesHandler.getIncomingDamageCapValue;
 
 
 @Mixin(AttributeMap.class)
@@ -32,6 +32,7 @@ public abstract class AttributeMapMixin {
     private static final Set<Attribute> PROBABILITY_ATTRIBUTES = Set.of(
             PHYSICAL_DAMAGE_REDUCTION.get(),
             MAGIC_DAMAGE_REDUCTION.get(),
+            ENVIRONMENTAL_DAMAGE_REDUCTION.get(),
             DAMAGE_REDUCTION.get(),
             EVASION.get(),
             IGNORE_INVINCIBLE_TIME.get()

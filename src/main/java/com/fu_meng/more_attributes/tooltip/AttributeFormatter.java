@@ -8,6 +8,8 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
 
+import java.util.List;
+
 import static com.fu_meng.more_attributes.AttributesRegistry.*;
 
 public class AttributeFormatter {
@@ -50,17 +52,21 @@ public class AttributeFormatter {
         return comp;
     }
 
+    private static final List<Attribute> percentageAttributes = List.of(
+            EVASION.get(), HIT_RATE.get(),
+            FINAL_EVASION.get(), FINAL_HIT_RATE.get(),
+            IGNORE_INVINCIBLE_TIME.get(), INVINCIBLE_TIME.get(),
+            PHYSICAL_DAMAGE_REDUCTION.get(), MAGIC_DAMAGE_REDUCTION.get(),
+            DAMAGE_REDUCTION.get(), ENVIRONMENTAL_DAMAGE_REDUCTION.get(),
+            TRUE_DAMAGE_RATIO.get(), MAGIC_DAMAGE_RATIO.get(),
+            EATING_SPEED.get(), DRAW_SPEED.get(),
+            ARROW_DAMAGE.get(), ARROW_VELOCITY.get(),
+            CRITICAL_CHANCE.get(), CRITICAL_DAMAGE.get(),
+            MINING_SPEED.get(), HUNGER_RATE.get()
+    );
+
     public static boolean isPercentageAttribute(Attribute attribute) {
-        return attribute.equals(EVASION.get()) || attribute.equals(HIT_RATE.get())
-                || attribute.equals(FINAL_EVASION.get()) || attribute.equals(FINAL_HIT_RATE.get())
-                || attribute.equals(IGNORE_INVINCIBLE_TIME.get()) || attribute.equals(INVINCIBLE_TIME.get())
-                || attribute.equals(PHYSICAL_DAMAGE_REDUCTION.get()) || attribute.equals(MAGIC_DAMAGE_REDUCTION.get())
-                || attribute.equals(DAMAGE_REDUCTION.get()) || attribute.equals(ENVIRONMENTAL_DAMAGE_REDUCTION.get())
-                || attribute.equals(TRUE_DAMAGE_RATIO.get()) || attribute.equals(MAGIC_DAMAGE_RATIO.get())
-                || attribute.equals(EATING_SPEED.get()) || attribute.equals(DRAW_SPEED.get())
-                || attribute.equals(ARROW_DAMAGE.get()) || attribute.equals(ARROW_VELOCITY.get())
-                || attribute.equals(CRITICAL_CHANCE.get()) || attribute.equals(CRITICAL_DAMAGE.get())
-                || attribute.equals(MINING_SPEED.get());
+        return percentageAttributes.contains(attribute);
     }
 
     /**
