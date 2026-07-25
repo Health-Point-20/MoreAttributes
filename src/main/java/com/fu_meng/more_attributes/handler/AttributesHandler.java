@@ -40,12 +40,25 @@ import static com.fu_meng.more_attributes.api.HurtManager.isOnDealExtraDamage;
 @Mod.EventBusSubscriber
 public class AttributesHandler {
     private static final Map<UUID, Float> DAMAGE_RECORD = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> HURT_RECORD = new ConcurrentHashMap<>();
 
     @SubscribeEvent(receiveCanceled = true)
     public static void onAttack(LivingAttackEvent event) {
         float damage = event.getAmount();
         LivingEntity victim = event.getEntity();
         LivingEntity attacker = event.getSource().getEntity() instanceof LivingEntity entity ? entity : null;
+
+        // 处理最小受伤间隔
+        double minimumInjuryInterval = victim.getAttributeValue(MINIMUM_INJURY_INTERVAL.get());
+        if (minimumInjuryInterval > 0) {
+            long lastHurtTime = HURT_RECORD.getOrDefault(victim.getUUID(), 0L);
+            long currentTime = victim.level().getGameTime();
+            if (currentTime - lastHurtTime < minimumInjuryInterval) {
+                event.setCanceled(true);
+            } else {
+                HURT_RECORD.put(victim.getUUID(), currentTime);
+            }
+        }
 
         if (attacker == null) return;
 
@@ -98,6 +111,10 @@ public class AttributesHandler {
                 tag.remove("RemainingInvincibleTime");
             }
 
+            // 处理伤害倍率属性
+            double damageMultiplier = attacker.getAttributeValue(DAMAGE_MULTIPLIER.get());
+            amount *= (float) damageMultiplier;
+
             // 处理暴击
             double criticalChance = attacker.getAttributeValue(CRITICAL_CHANCE.get());
             double criticalDamage = attacker.getAttributeValue(CRITICAL_DAMAGE.get());
@@ -115,9 +132,14 @@ public class AttributesHandler {
         boolean isMagicDamage = source.typeHolder()
                 .unwrapKey()
                 .map(key -> consideredMagicDamage.contains(key.location()))
-                .orElse(false);;
+                .orElse(false);
 
         if (isMagicDamage) {
+            if (attacker != null ){
+                double magicDamage = attacker.getAttributeValue(MAGIC_DAMAGE_MULTIPLIER.get());
+                amount *= (float) magicDamage;
+            }
+
             // 魔法伤害减免
             amount *= (float) AttributeCalculationHelper.getMagicDamageFactor(victim);
 
@@ -280,10 +302,24 @@ public class AttributesHandler {
     }
 
     @SubscribeEvent
+    public static void onLivingHeal(LivingHealEvent event) {
+        LivingEntity living = event.getEntity();
+
+        double healingEfficiency = living.getAttributeValue(HEALING_EFFICIENCY.get());
+        event.setAmount((float) (event.getAmount() * healingEfficiency));
+    }
+
+    @SubscribeEvent
     public static void onLivingTick(LivingEvent.LivingTickEvent event) {
         LivingEntity living = event.getEntity();
+
+        // 处理再生属性
         double healthRegen = living.getAttributeValue(HEALTH_REGEN.get());
         living.heal((float) (healthRegen/20.0));
+
+        // 处理百分比再生属性
+        double percentRegen = living.getAttributeValue(PERCENT_HEALTH_REGEN.get());
+        living.heal((float) (living.getMaxHealth() * percentRegen/20.0));
     }
 
     @SubscribeEvent
@@ -363,6 +399,5 @@ public class AttributesHandler {
                 arrow.setDeltaMovement(arrow.getDeltaMovement().scale(arrowVelocity));
             }
         }
-
     }
 }

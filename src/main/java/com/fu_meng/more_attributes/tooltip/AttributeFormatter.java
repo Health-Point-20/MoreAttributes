@@ -62,7 +62,9 @@ public class AttributeFormatter {
             EATING_SPEED.get(), DRAW_SPEED.get(),
             ARROW_DAMAGE.get(), ARROW_VELOCITY.get(),
             CRITICAL_CHANCE.get(), CRITICAL_DAMAGE.get(),
-            MINING_SPEED.get(), HUNGER_RATE.get()
+            MINING_SPEED.get(), HUNGER_RATE.get(),
+            PERCENT_HEALTH_REGEN.get(), HEALING_EFFICIENCY.get(),
+            MAGIC_DAMAGE_MULTIPLIER.get(), DAMAGE_MULTIPLIER.get()
     );
 
     public static boolean isPercentageAttribute(Attribute attribute) {

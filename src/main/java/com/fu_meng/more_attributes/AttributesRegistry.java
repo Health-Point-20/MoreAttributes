@@ -99,9 +99,23 @@ public class AttributesRegistry {
     public static final RegistryObject<Attribute> EXTRA_MAGIC_DAMAGE = ATTRIBUTES.register("extra_magic_damage",
             () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".extra_magic_damage", 0.0, 0.0, Max)).setSyncable(true));
 
+    public static final RegistryObject<Attribute> MAGIC_DAMAGE_MULTIPLIER = ATTRIBUTES.register("magic_damage_multiplier",
+            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_damage_multiplier", 1.0, 0.0, Max)).setSyncable(true));
+
     public static final RegistryObject<Attribute> MINING_SPEED = ATTRIBUTES.register("mining_speed",
             () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".mining_speed", 1.0, 0.0, Max)).setSyncable(true));
 
+    public static final RegistryObject<Attribute> HEALING_EFFICIENCY = ATTRIBUTES.register("healing_efficiency",
+            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".healing_efficiency", 1.0, 0.0, Max)).setSyncable(true));
+
+    public static final RegistryObject<Attribute> PERCENT_HEALTH_REGEN = ATTRIBUTES.register("percent_health_regen",
+            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".percent_health_regen", 0, 0, Max)).setSyncable(true));
+
+    public static final RegistryObject<Attribute> MINIMUM_INJURY_INTERVAL = ATTRIBUTES.register("minimum_injury_interval",
+            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".minimum_injury_interval", 0.0, 0.0, Max)).setSyncable(true));
+
+    public static final RegistryObject<Attribute> DAMAGE_MULTIPLIER = ATTRIBUTES.register("damage_multiplier",
+            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".damage_multiplier", 1.0, 0.0, Max)).setSyncable(true));
 
     @SubscribeEvent
     public static void addAttributes(EntityAttributeModificationEvent event) {
@@ -128,7 +142,13 @@ public class AttributesRegistry {
                 TRUE_DAMAGE_RATIO,
                 EXTRA_TRUE_DAMAGE,
                 MAGIC_DAMAGE_RATIO,
-                EXTRA_MAGIC_DAMAGE
+                EXTRA_MAGIC_DAMAGE,
+                MAGIC_DAMAGE_MULTIPLIER,
+                HEALING_EFFICIENCY,
+                PERCENT_HEALTH_REGEN,
+                DAMAGE_MULTIPLIER,
+                MINIMUM_INJURY_INTERVAL
+
         );
 
         List<RegistryObject<Attribute>> attributesForPlayer = Arrays.asList(

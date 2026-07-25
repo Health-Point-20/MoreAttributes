@@ -22,11 +22,16 @@
   "attribute.more_attributes.critical_chance": "Critical Chance",
   "attribute.more_attributes.critical_damage": "Critical Damage",
   "attribute.more_attributes.health_regen": "Health Regen",
+  "attribute.more_attributes.percent_health_regen": "Percent Health Regen",
   "attribute.more_attributes.life_steal": "Life Steal",
   "attribute.more_attributes.hunger_rate": "Hunger Rate",
   "attribute.more_attributes.true_damage_ratio": "True Damage Ratio",
   "attribute.more_attributes.extra_true_damage": "Extra True Damage",
   "attribute.more_attributes.magic_damage_ratio": "Magic Damage Ratio",
   "attribute.more_attributes.extra_magic_damage": "Extra Magic Damage",
-  "attribute.more_attributes.mining_speed": "Mining Speed"
+  "attribute.more_attributes.magic_damage_multiplier": "Magic Damage Multiplier",
+  "attribute.more_attributes.damage_multiplier": "Damage Multiplier",
+  "attribute.more_attributes.mining_speed": "Mining Speed",
+  "attribute.more_attributes.healing_efficiency": "Healing Efficiency",
+  "attribute.more_attributes.minimum_injury_interval": "Minimum Injury Interval"
 }

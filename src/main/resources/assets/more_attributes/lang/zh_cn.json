@@ -1,6 +1,5 @@
 {
   "more_attributes.hit_miss": "你的攻击被 %s 闪避了",
-
   "attribute.modifier.potency": "效力",
   "attribute.more_attributes.incoming_damage_cap": "受到伤害上限",
   "attribute.more_attributes.evasion": "闪避率",
@@ -22,11 +21,16 @@
   "attribute.more_attributes.critical_chance": "暴击率",
   "attribute.more_attributes.critical_damage": "暴击伤害",
   "attribute.more_attributes.health_regen": "再生",
+  "attribute.more_attributes.percent_health_regen": "百分比再生",
   "attribute.more_attributes.life_steal": "生命窃取",
   "attribute.more_attributes.hunger_rate": "饥饿速率",
   "attribute.more_attributes.true_damage_ratio": "真实伤害转化率",
   "attribute.more_attributes.extra_true_damage": "额外真实伤害",
   "attribute.more_attributes.magic_damage_ratio": "魔法伤害转化率",
   "attribute.more_attributes.extra_magic_damage": "额外魔法伤害",
-  "attribute.more_attributes.mining_speed": "挖掘速度"
+  "attribute.more_attributes.magic_damage_multiplier": "魔法伤害倍率",
+  "attribute.more_attributes.damage_multiplier": "伤害倍率",
+  "attribute.more_attributes.mining_speed": "挖掘速度",
+  "attribute.more_attributes.healing_efficiency": "受疗效果",
+  "attribute.more_attributes.minimum_injury_interval": "最小受伤间隔"
 }
