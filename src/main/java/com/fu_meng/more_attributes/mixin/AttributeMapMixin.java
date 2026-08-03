@@ -19,6 +19,8 @@ import static com.fu_meng.more_attributes.AttributesRegistry.*;
 import static com.fu_meng.more_attributes.api.AttributeCalculationHelper.getProbability;
 import static com.fu_meng.more_attributes.handler.AttributesHandler.getIncomingDamageCapValue;
 
+import com.fu_meng.more_attributes.api.AttributeInstanceAccessor;
+
 
 @Mixin(AttributeMap.class)
 public abstract class AttributeMapMixin {
@@ -52,6 +54,15 @@ public abstract class AttributeMapMixin {
                 double maxHealth = attributes.get(maxHealthAttribute).getValue();
                 cir.setReturnValue((double) getIncomingDamageCapValue(instance, maxHealth));
             }
+        }
+    }
+
+    // 神化兼容：在 getInstance 返回时设置反向引用，使 AttributeInstance 能访问所属 AttributeMap
+    @Inject(method = "getInstance*", at = @At("RETURN"))
+    private void onGetInstance(Attribute pAttribute, CallbackInfoReturnable<AttributeInstance> cir) {
+        AttributeInstance instance = cir.getReturnValue();
+        if (instance instanceof AttributeInstanceAccessor accessor) {
+            accessor.more_attributes$setMap((AttributeMap) (Object) this);
         }
     }
 }

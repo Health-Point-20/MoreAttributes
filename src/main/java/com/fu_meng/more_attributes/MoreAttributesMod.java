@@ -1,10 +1,12 @@
 package com.fu_meng.more_attributes;
 
+import com.fu_meng.more_attributes.tooltip.AttributeTooltipHandler;
 import com.mojang.logging.LogUtils;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.util.thread.SidedThreadGroups;
@@ -31,6 +33,12 @@ public class MoreAttributesMod {
 
         MAConfig.register();
         ATTRIBUTES.register(modEventBus);
+
+        // attributeslib 存在时，条件注册 attributeslib 相关的 tooltip 监听器
+        // 用 @Mod.EventBusSubscriber 会在类加载时触发 NoClassDefFoundError
+        if (ModList.get().isLoaded("attributeslib")) {
+            MinecraftForge.EVENT_BUS.register(AttributeTooltipHandler.ApophicTooltipCompatibility.class);
+        }
     }
 
     private static final Collection<AbstractMap.SimpleEntry<Runnable, Integer>> workQueue = new ConcurrentLinkedQueue<>();

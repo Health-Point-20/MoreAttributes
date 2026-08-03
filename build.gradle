@@ -140,6 +140,14 @@ repositories {
     // flatDir {
     //     dir 'libs'
     // }
+
+    maven {
+        name = 'ShadowsMaven'
+        url = 'https://maven.shadowsoffire.dev/releases'
+        content {
+            includeGroup 'dev.shadowsoffire'
+        }
+    }
 }
 
 dependencies {
@@ -166,6 +174,9 @@ dependencies {
     // http://www.gradle.org/docs/current/userguide/dependency_management.html
 
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+
+    // Apotic-Attributes (attributeslib) - 可选前置，仅编译时用于 tooltip 集成
+    compileOnly fg.deobf("dev.shadowsoffire:ApothicAttributes:1.20.1-1.3.7")
 
 }
 

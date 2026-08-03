@@ -5,12 +5,16 @@
   "compatibilityLevel": "JAVA_8",
   "refmap": "more_attributes.refmap.json",
   "mixins": [
+    "AttributeInstanceMixin",
     "AttributeMapMixin",
+    "EntityMixin",
     "FoodDataMixin",
+    "LivingEntityAccessor",
     "LivingEntityMixin",
     "PlayerMixin"
   ],
   "client": [
+    "LivingEntityRenderMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -2,7 +2,7 @@ package com.fu_meng.more_attributes.handler;
 
 import com.fu_meng.more_attributes.api.AttributeCalculationHelper;
 import com.fu_meng.more_attributes.api.HurtManager;
-import com.fu_meng.more_attributes.mixin.LivingEntityMixin;
+import com.fu_meng.more_attributes.mixin.LivingEntityAccessor;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvent;
@@ -17,9 +17,12 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.AbstractArrow;
+import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.*;
+import net.minecraftforge.common.ForgeMod;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.event.entity.ProjectileImpactEvent;
 import net.minecraftforge.event.entity.living.*;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
@@ -41,12 +44,34 @@ import static com.fu_meng.more_attributes.api.HurtManager.isOnDealExtraDamage;
 public class AttributesHandler {
     private static final Map<UUID, Float> DAMAGE_RECORD = new ConcurrentHashMap<>();
     private static final Map<UUID, Long> HURT_RECORD = new ConcurrentHashMap<>();
+    // Map<弹射物, 受击者>
+    private static final Map<UUID, UUID> PROJECTILE_RECORD = new ConcurrentHashMap<>();
+
+    @SubscribeEvent
+    public static void onProjectileImpact(ProjectileImpactEvent event) {
+        Projectile projectile = event.getProjectile();
+        LivingEntity victim = event.getEntity() instanceof LivingEntity living ? living : null;
+        LivingEntity attacker = projectile.getOwner() instanceof LivingEntity living ? living : null;
+
+        if (victim == null || attacker == null) return;
+
+        double finalHitProb = AttributeCalculationHelper.getFinalHitProbability(attacker, victim);
+        if (victim.getRandom().nextFloat() >= finalHitProb) {
+            event.setImpactResult(ProjectileImpactEvent.ImpactResult.SKIP_ENTITY);
+            if (attacker instanceof Player player) {
+                player.displayClientMessage(Component.translatable("more_attributes.hit_miss", victim.getDisplayName()), true);
+            }
+        } else {
+            PROJECTILE_RECORD.put(projectile.getUUID(), victim.getUUID());
+        }
+    }
 
     @SubscribeEvent(receiveCanceled = true)
     public static void onAttack(LivingAttackEvent event) {
         float damage = event.getAmount();
+        DamageSource source = event.getSource();
         LivingEntity victim = event.getEntity();
-        LivingEntity attacker = event.getSource().getEntity() instanceof LivingEntity entity ? entity : null;
+        LivingEntity attacker = source.getEntity() instanceof LivingEntity entity ? entity : null;
 
         // 处理最小受伤间隔
         double minimumInjuryInterval = victim.getAttributeValue(MINIMUM_INJURY_INTERVAL.get());
@@ -61,6 +86,11 @@ public class AttributesHandler {
         }
 
         if (attacker == null) return;
+
+        // 若为弹射物，则已经在ProjectileImpactEvent中处理，此处不再重复处理
+        Entity directEntity = source.getDirectEntity();
+        if (directEntity == null || !PROJECTILE_RECORD.containsKey(directEntity.getUUID())
+                || !victim.getUUID().equals(PROJECTILE_RECORD.get(directEntity.getUUID()))) return;
 
         try {
             double finalHitProb = AttributeCalculationHelper.getFinalHitProbability(attacker, victim);
@@ -116,10 +146,14 @@ public class AttributesHandler {
             amount *= (float) damageMultiplier;
 
             // 处理暴击
-            double criticalChance = attacker.getAttributeValue(CRITICAL_CHANCE.get());
-            double criticalDamage = attacker.getAttributeValue(CRITICAL_DAMAGE.get());
-            if (attacker.getRandom().nextDouble() <= criticalChance) {
-                amount *= (float) criticalDamage;
+            // 开启神化兼容时跳过本模组的暴击处理，交由神化模组使用叠加后的属性值进行暴击判定
+            if (!ApotheosisCritCompatibility) {
+                double criticalChance = attacker.getAttributeValue(CRITICAL_CHANCE.get());
+                double criticalDamage = attacker.getAttributeValue(CRITICAL_DAMAGE.get());
+
+                if (attacker.getRandom().nextDouble() <= criticalChance) {
+                    amount *= (float) criticalDamage;
+                }
             }
         }
 
@@ -240,13 +274,38 @@ public class AttributesHandler {
                 DamageSource magicSource = HurtManager.getDamageSource(DamageTypes.MAGIC, attacker);
                 HurtManager.extraHurt(victim, magicSource, (float) extraMagicDamage);
             }
+
             // 处理生命窃取
             damage = event.getAmount();
             double lifeSteal = attacker.getAttributeValue(LIFE_STEAL.get());
-            if (lifeSteal > 0) {
-                float stealAmount = damage * (float) lifeSteal;
-                if (!unlimitedLiftSteal) {stealAmount = Math.min(stealAmount, damage);}
 
+            // 根据伤害类型应用对应的专项生命窃取
+            DamageSource source = event.getSource();
+            boolean isMagicDamage = source.typeHolder()
+                    .unwrapKey()
+                    .map(key -> consideredMagicDamage.contains(key.location()))
+                    .orElse(false);
+            boolean isRangedDamage = source.getDirectEntity() instanceof Projectile;
+            boolean isMeleeDamage = attacker == source.getDirectEntity()
+                    && attacker.distanceTo(victim) <= attacker.getAttributeValue(ForgeMod.ENTITY_REACH.get());
+
+            double specificLifeSteal;
+            if (isMagicDamage) {
+                specificLifeSteal = attacker.getAttributeValue(MAGIC_LIFE_STEAL.get());
+            } else if (isRangedDamage) {
+                specificLifeSteal = attacker.getAttributeValue(RANGED_LIFE_STEAL.get());
+            } else if (isMeleeDamage){
+                specificLifeSteal = attacker.getAttributeValue(MELEE_LIFE_STEAL.get());
+            } else {
+                specificLifeSteal = 0;
+            }
+
+            double totalLifeSteal = lifeSteal + specificLifeSteal;
+            if (totalLifeSteal > 0) {
+                float stealAmount = damage * (float) totalLifeSteal;
+                if (!unlimitedLiftSteal) {
+                    stealAmount = Math.min(stealAmount, damage);
+                }
                 attacker.heal(stealAmount);
             }
         }
@@ -262,7 +321,7 @@ public class AttributesHandler {
 
         if (victim.isInvulnerable() || victim instanceof Player playerVictim && playerVictim.getAbilities().invulnerable) {
             double trueDamage = attacker.getAttributeValue(EXTRA_TRUE_DAMAGE.get());
-            LivingEntityMixin victimMixin = (LivingEntityMixin) victim;
+            LivingEntityAccessor victimMixin = (LivingEntityAccessor) victim;
             DamageSource damageSource = attacker.damageSources().playerAttack(attacker);
             if (victim.getHealth() - trueDamage > 0) {
                 victim.setHealth((float) (victim.getHealth() - trueDamage));
@@ -400,4 +459,50 @@ public class AttributesHandler {
             }
         }
     }
+
+    @SubscribeEvent
+    public static void onLivingBreath(LivingBreatheEvent event) {
+        LivingEntity entity = event.getEntity();
+        double oxygenConsumptionRate = entity.getAttributeValue(OXYGEN_CONSUMPTION_RATE.get());
+        CompoundTag tag = entity.getPersistentData();
+
+        int consumptionAmount = event.getConsumeAirAmount();
+        int refillAmount = event.getRefillAirAmount();
+
+        // 只有当氧气消耗速率不为1时，才进行处理
+        if (oxygenConsumptionRate == 1) return;
+
+        // 计算基础变动量：速率 * 基础变动方向
+        // 消耗为正时，基础变动为正（消耗氧气值）；为负时，基础变动为负（恢复氧气值）
+        int baseChange = consumptionAmount > 0 ? consumptionAmount : -refillAmount;
+
+        if (baseChange == 0 && tag.getDouble("remainingOxygenConsumption") == 0) {
+            return; // 既没有消耗也没有恢复，且没有余数，返回
+        }
+
+        // 计算实际总变动量（包含前次处理剩余小数）
+        double shouldConsumption = oxygenConsumptionRate * baseChange + tag.getDouble("remainingOxygenConsumption");
+        int finalConsumption = (int) shouldConsumption;
+
+        // 更新小数余数
+        double remainder = shouldConsumption % 1.0;
+        tag.putDouble("remainingOxygenConsumption", remainder);
+
+        // 根据最终计算结果的正负，决定是消耗还是恢复氧气
+        if (finalConsumption > 0) {
+            // 结果为正：消耗氧气
+            event.setCanBreathe(false);
+            event.setConsumeAirAmount(finalConsumption);
+        } else if (finalConsumption < 0) {
+            // 结果为负：恢复氧气
+            event.setCanBreathe(true);
+            event.setCanRefillAir(true);
+            event.setRefillAirAmount(-finalConsumption);
+        } else {
+            // 结果为 0：不消耗也不恢复（小数积累不足以触发 1 点变动）
+            event.setConsumeAirAmount(0);
+            event.setRefillAirAmount(0);
+        }
+    }
+
 }

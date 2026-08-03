@@ -14,7 +14,7 @@ import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-import com.fu_meng.more_attributes.mixin.LivingEntityMixin;
+import com.fu_meng.more_attributes.mixin.LivingEntityAccessor;
 
 import javax.annotation.Nullable;
 import java.util.*;
@@ -87,7 +87,7 @@ public class HurtManager {
      * 处理单个实体的额外伤害
      */
     private static void processExtraHurt(LivingEntity target, ExtraHurtData data) {
-        LivingEntityMixin targetMixin = (LivingEntityMixin) target;
+        LivingEntityAccessor targetMixin = (LivingEntityAccessor) target;
         int origInvulnerableTime = target.invulnerableTime;
         float origHurt = targetMixin.getLastHurt();
 

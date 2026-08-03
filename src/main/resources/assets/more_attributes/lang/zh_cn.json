@@ -23,6 +23,9 @@
   "attribute.more_attributes.health_regen": "再生",
   "attribute.more_attributes.percent_health_regen": "百分比再生",
   "attribute.more_attributes.life_steal": "生命窃取",
+  "attribute.more_attributes.melee_life_steal": "近战生命窃取",
+  "attribute.more_attributes.ranged_life_steal": "远程生命窃取",
+  "attribute.more_attributes.magic_life_steal": "魔法生命窃取",
   "attribute.more_attributes.hunger_rate": "饥饿速率",
   "attribute.more_attributes.true_damage_ratio": "真实伤害转化率",
   "attribute.more_attributes.extra_true_damage": "额外真实伤害",
@@ -32,5 +35,7 @@
   "attribute.more_attributes.damage_multiplier": "伤害倍率",
   "attribute.more_attributes.mining_speed": "挖掘速度",
   "attribute.more_attributes.healing_efficiency": "受疗效果",
-  "attribute.more_attributes.minimum_injury_interval": "最小受伤间隔"
+  "attribute.more_attributes.minimum_injury_interval": "最小受伤间隔",
+  "attribute.more_attributes.oxygen_consumption_rate": "耗氧速率",
+  "attribute.more_attributes.scale": "尺寸"
 }

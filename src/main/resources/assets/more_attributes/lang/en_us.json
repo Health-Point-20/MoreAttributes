@@ -24,6 +24,9 @@
   "attribute.more_attributes.health_regen": "Health Regen",
   "attribute.more_attributes.percent_health_regen": "Percent Health Regen",
   "attribute.more_attributes.life_steal": "Life Steal",
+  "attribute.more_attributes.melee_life_steal": "Melee Life Steal",
+  "attribute.more_attributes.ranged_life_steal": "Ranged Life Steal",
+  "attribute.more_attributes.magic_life_steal": "Magic Life Steal",
   "attribute.more_attributes.hunger_rate": "Hunger Rate",
   "attribute.more_attributes.true_damage_ratio": "True Damage Ratio",
   "attribute.more_attributes.extra_true_damage": "Extra True Damage",
@@ -33,5 +36,7 @@
   "attribute.more_attributes.damage_multiplier": "Damage Multiplier",
   "attribute.more_attributes.mining_speed": "Mining Speed",
   "attribute.more_attributes.healing_efficiency": "Healing Efficiency",
-  "attribute.more_attributes.minimum_injury_interval": "Minimum Injury Interval"
+  "attribute.more_attributes.minimum_injury_interval": "Minimum Injury Interval",
+  "attribute.more_attributes.oxygen_consumption_rate": "Oxygen Consumption Rate",
+  "attribute.more_attributes.scale": "Scale"
 }

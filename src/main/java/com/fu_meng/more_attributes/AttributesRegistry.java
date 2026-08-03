@@ -1,11 +1,13 @@
 package com.fu_meng.more_attributes;
 
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.RangedAttribute;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.event.entity.EntityAttributeModificationEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.registries.DeferredRegister;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -84,8 +86,20 @@ public class AttributesRegistry {
     public static final RegistryObject<Attribute> LIFE_STEAL = ATTRIBUTES.register("life_steal",
             () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".life_steal", 0.0, 0.0, Max)).setSyncable(true));
 
+    public static final RegistryObject<Attribute> MELEE_LIFE_STEAL = ATTRIBUTES.register("melee_life_steal",
+            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".melee_life_steal", 0.0, 0.0, Max)).setSyncable(true));
+
+    public static final RegistryObject<Attribute> RANGED_LIFE_STEAL = ATTRIBUTES.register("ranged_life_steal",
+            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".ranged_life_steal", 0.0, 0.0, Max)).setSyncable(true));
+
+    public static final RegistryObject<Attribute> MAGIC_LIFE_STEAL = ATTRIBUTES.register("magic_life_steal",
+            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_life_steal", 0.0, 0.0, Max)).setSyncable(true));
+
     public static final RegistryObject<Attribute> HUNGER_RATE = ATTRIBUTES.register("hunger_rate",
             () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".hunger_rate", 1.0, 0.0, Max)).setSyncable(true));
+
+    public static final RegistryObject<Attribute> OXYGEN_CONSUMPTION_RATE = ATTRIBUTES.register("oxygen_consumption_rate",
+            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".oxygen_consumption_rate", 1.0, Min, Max)).setSyncable(true));
 
     public static final RegistryObject<Attribute> TRUE_DAMAGE_RATIO = ATTRIBUTES.register("true_damage_ratio",
             () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".true_damage_ratio", 0.0, 0.0, Max)).setSyncable(true));
@@ -117,6 +131,9 @@ public class AttributesRegistry {
     public static final RegistryObject<Attribute> DAMAGE_MULTIPLIER = ATTRIBUTES.register("damage_multiplier",
             () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".damage_multiplier", 1.0, 0.0, Max)).setSyncable(true));
 
+    public static final RegistryObject<Attribute> SCALE = ATTRIBUTES.register("scale",
+            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".scale", 1.0, 0.0, 100)).setSyncable(true));
+
     @SubscribeEvent
     public static void addAttributes(EntityAttributeModificationEvent event) {
         List<RegistryObject<Attribute>> attributesForLiving = Arrays.asList(
@@ -139,6 +156,9 @@ public class AttributesRegistry {
                 CRITICAL_DAMAGE,
                 HEALTH_REGEN,
                 LIFE_STEAL,
+                MELEE_LIFE_STEAL,
+                RANGED_LIFE_STEAL,
+                MAGIC_LIFE_STEAL,
                 TRUE_DAMAGE_RATIO,
                 EXTRA_TRUE_DAMAGE,
                 MAGIC_DAMAGE_RATIO,
@@ -147,8 +167,9 @@ public class AttributesRegistry {
                 HEALING_EFFICIENCY,
                 PERCENT_HEALTH_REGEN,
                 DAMAGE_MULTIPLIER,
-                MINIMUM_INJURY_INTERVAL
-
+                MINIMUM_INJURY_INTERVAL,
+                OXYGEN_CONSUMPTION_RATE,
+                SCALE
         );
 
         List<RegistryObject<Attribute>> attributesForPlayer = Arrays.asList(
@@ -168,6 +189,38 @@ public class AttributesRegistry {
             event.getTypes().stream()
                     .filter(type -> type.getBaseClass().isAssignableFrom(Player.class))
                     .forEach(type -> event.add(type, attribute.get()));
+        }
+    }
+
+    // ================= 神化模组兼容 =================
+    private static Attribute apotheosisCritChance = null;
+    private static Attribute apotheosisCritDamage = null;
+    private static boolean apotheosisAttrsResolved = false;
+
+    /**
+     * 通过 ForgeRegistries 懒加载查找神化模组的暴击率属性。
+     * 若神化未安装则返回 null。
+     */
+    public static Attribute getApotheosisCritChance() {
+        resolveApotheosisAttributes();
+        return apotheosisCritChance;
+    }
+
+    /**
+     * 通过 ForgeRegistries 懒加载查找神化模组的暴击伤害属性。
+     * 若神化未安装则返回 null。
+     */
+    public static Attribute getApotheosisCritDamage() {
+        resolveApotheosisAttributes();
+        return apotheosisCritDamage;
+    }
+
+    private static void resolveApotheosisAttributes() {
+        if (apotheosisAttrsResolved) return;
+        apotheosisAttrsResolved = true;
+        if (ModList.get().isLoaded("attributeslib")) {
+            apotheosisCritChance = ForgeRegistries.ATTRIBUTES.getValue(ResourceLocation.parse("attributeslib:crit_chance"));
+            apotheosisCritDamage = ForgeRegistries.ATTRIBUTES.getValue(ResourceLocation.parse("attributeslib:crit_damage"));
         }
     }
 }

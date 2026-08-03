@@ -143,8 +143,52 @@ public class AttributeCalculationHelper {
         return getDamageFactorFromStrength(computeStrength(entity.getAttribute(DAMAGE_REDUCTION.get())));
     }
 
-    // ================= 无视无敌时间（强度模型）=================
+    // ================= 无视无敌时间=================
     public static double getIgnoreInvincibleTimeRate(LivingEntity entity) {
         return strengthToProbability(computeStrength(entity.getAttribute(IGNORE_INVINCIBLE_TIME.get())));
+    }
+
+    // ================= 缩放相关 =================
+    // SCALE 为乘数属性：1.0 = 原始大小，>1 放大，<1 缩小
+    // 正向增量（放大）直接线性累加；负向增量（缩小）强度模型叠加，
+    // 将每个负向增量的绝对值视为"缩减比例"并转为强度累加，
+    // 保证最终缩减比例始终在 [0, 1] 内，防止尺寸变为负数。
+    public static double getScaleFactor(LivingEntity entity) {
+        AttributeInstance instance = entity.getAttribute(SCALE.get());
+        if (instance == null) return 1.0;
+
+        double positiveSum = instance.getBaseValue(); // 正向累加（含基础值，默认 1.0）
+        double negativeStrength = 0.0;                 // 负向强度
+        double multiplyBase = 1.0;
+        double multiplyTotal = 1.0;
+
+        for (AttributeModifier modifier : instance.getModifiers()) {
+            double amount = modifier.getAmount();
+            switch (modifier.getOperation()) {
+                case ADDITION:
+                    if (amount >= 0) {
+                        positiveSum += amount;
+                    } else {
+                        // 将负向增量视为"缩减比例"（取绝对值），通过强度模型叠加
+                        negativeStrength += probabilityToStrength(-amount);
+                    }
+                    break;
+                case MULTIPLY_BASE:
+                    multiplyBase *= (1.0 + amount);
+                    break;
+                case MULTIPLY_TOTAL:
+                    multiplyTotal *= (1.0 + amount);
+                    break;
+            }
+        }
+
+        // 负向部分：缩减因子 ∈ [0, 1]
+        double reductionProbability = strengthToProbability(negativeStrength);
+        double negativeFactor = 1.0 - reductionProbability;
+
+        // 最终 scale = 正向累加值 × 缩减因子 × 乘数修饰
+        double scale = positiveSum * negativeFactor * multiplyBase * multiplyTotal;
+
+        return Math.max(0.0, scale);
     }
 }
