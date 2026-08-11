@@ -1,4 +1,4 @@
-package com.fu_meng.more_attributes.api;
+package com.fu_meng.more_attributes.api.accessor;
 
 import net.minecraft.world.entity.ai.attributes.AttributeMap;
 

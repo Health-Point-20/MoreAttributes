@@ -1,7 +1,7 @@
 {
   "more_attributes.hit_miss": "Your attacks are dodged by %s",
 
-  "attribute.modifier.potency": "Potency",
+  "attribute.modifier.potency": " Potency",
   "attribute.more_attributes.incoming_damage_cap": "Incoming Damage Cap",
   "attribute.more_attributes.evasion": "Evasion",
   "attribute.more_attributes.hit_rate": "Hit Rate",
@@ -38,5 +38,15 @@
   "attribute.more_attributes.healing_efficiency": "Healing Efficiency",
   "attribute.more_attributes.minimum_injury_interval": "Minimum Injury Interval",
   "attribute.more_attributes.oxygen_consumption_rate": "Oxygen Consumption Rate",
-  "attribute.more_attributes.scale": "Scale"
+  "attribute.more_attributes.scale": "Scale",
+  "attribute.more_attributes.damage_reflection": "Damage Reflection",
+  "attribute.more_attributes.cooldown_reduction": "Cooldown Reduction",
+  "attribute.more_attributes.execute_threshold": "Execute Threshold",
+  "attribute.more_attributes.backstab_damage": "Backstab Damage",
+  "attribute.more_attributes.backstab_resistance": "Backstab Resistance",
+  "attribute.more_attributes.aggro": "Aggro",
+  "attribute.more_attributes.climbing_speed": "Climbing Speed",
+  "attribute.more_attributes.experience_gain_ratio": "Experience Gain Ratio",
+  "attribute.more_attributes.pickup_radius": "Pickup Radius",
+  "more_attributes.execute_triggered": "Executed!"
 }

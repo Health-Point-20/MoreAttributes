@@ -17,7 +17,7 @@ import static com.fu_meng.more_attributes.AttributesRegistry.getApotheosisCritCh
 import static com.fu_meng.more_attributes.AttributesRegistry.getApotheosisCritDamage;
 import static com.fu_meng.more_attributes.MAConfig.ApotheosisCritCompatibility;
 
-import com.fu_meng.more_attributes.api.AttributeInstanceAccessor;
+import com.fu_meng.more_attributes.api.accessor.AttributeInstanceAccessor;
 
 @Mixin(AttributeInstance.class)
 public class AttributeInstanceMixin implements AttributeInstanceAccessor {

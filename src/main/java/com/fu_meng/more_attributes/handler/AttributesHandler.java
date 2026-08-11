@@ -3,22 +3,31 @@ package com.fu_meng.more_attributes.handler;
 import com.fu_meng.more_attributes.api.AttributeCalculationHelper;
 import com.fu_meng.more_attributes.api.HurtManager;
 import com.fu_meng.more_attributes.mixin.LivingEntityAccessor;
+import com.fu_meng.more_attributes.mixin.MeleeAttackGoalAccessor;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.tags.DamageTypeTags;
-import net.minecraft.world.damagesource.CombatRules;
-import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.damagesource.*;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ExperienceOrb;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.AbstractArrow;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.*;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.ForgeMod;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
@@ -26,19 +35,19 @@ import net.minecraftforge.event.entity.ProjectileImpactEvent;
 import net.minecraftforge.event.entity.living.*;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.entity.player.PlayerXpEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 import static com.fu_meng.more_attributes.AttributesRegistry.*;
 import static com.fu_meng.more_attributes.MAConfig.*;
 import static com.fu_meng.more_attributes.MoreAttributesMod.LOGGER;
 import static com.fu_meng.more_attributes.MoreAttributesMod.queueServerWork;
-import static com.fu_meng.more_attributes.api.HurtManager.isOnDealExtraDamage;
+import static com.fu_meng.more_attributes.api.HurtManager.*;
 
 @Mod.EventBusSubscriber
 public class AttributesHandler {
@@ -46,6 +55,8 @@ public class AttributesHandler {
     private static final Map<UUID, Long> HURT_RECORD = new ConcurrentHashMap<>();
     // Map<弹射物, 受击者>
     private static final Map<UUID, UUID> PROJECTILE_RECORD = new ConcurrentHashMap<>();
+    // 仇恨表：mobUUID -> (playerUUID -> aggroValue)
+    private static final Map<UUID, Map<UUID, Double>> AGGRO_TABLE = new ConcurrentHashMap<>();
 
     @SubscribeEvent
     public static void onProjectileImpact(ProjectileImpactEvent event) {
@@ -87,11 +98,15 @@ public class AttributesHandler {
 
         if (attacker == null) return;
 
-        // 若为弹射物，则已经在ProjectileImpactEvent中处理，此处不再重复处理
+        // 弹射物已在 ProjectileImpactEvent 中处理过闪避判定，此处不再重复处理
         Entity directEntity = source.getDirectEntity();
-        if (directEntity == null || !PROJECTILE_RECORD.containsKey(directEntity.getUUID())
-                || !victim.getUUID().equals(PROJECTILE_RECORD.get(directEntity.getUUID()))) return;
+        if (directEntity != null && PROJECTILE_RECORD.containsKey(directEntity.getUUID())) {
+            // 移除已处理的弹射物记录，避免内存泄漏
+            PROJECTILE_RECORD.remove(directEntity.getUUID());
+            return;
+        }
 
+        // 近战及其他攻击：进行闪避判定
         try {
             double finalHitProb = AttributeCalculationHelper.getFinalHitProbability(attacker, victim);
             if (victim.getRandom().nextFloat() >= finalHitProb) {
@@ -154,6 +169,40 @@ public class AttributesHandler {
                 if (attacker.getRandom().nextDouble() <= criticalChance) {
                     amount *= (float) criticalDamage;
                 }
+            }
+
+            double damageReflection =  attacker.getAttributeValue(DAMAGE_REFLECTION.get());
+            if (damageReflection > 0) {
+                ResourceKey<DamageType> newSourceKey = source.typeHolder().unwrapKey().orElse(DamageTypes.MOB_ATTACK);
+                DamageSource newSource = getDamageSource(newSourceKey, victim);
+                float newDamage = (float) damageReflection * amount;
+
+                extraHurt(attacker, newSource, newDamage);
+            }
+
+            // 处理背刺伤害加成/抵抗
+            // 攻击者位于受害者背后半球（点积 > 0）判定为背刺
+            double distanceSqr = victim.position().distanceToSqr(attacker.position());
+            if (distanceSqr > 1.0E-6) {
+                Vec3 look = victim.getLookAngle();
+                Vec3 toAttacker = attacker.position().subtract(victim.position()).normalize();
+                if (look.dot(toAttacker) > 0) {
+                    // BACKSTAB_DAMAGE 为线性加成；BACKSTAB_RESISTANCE 经强度模型返回减伤概率
+                    double backstabBonus = attacker.getAttributeValue(BACKSTAB_DAMAGE.get());
+                    double backstabResist = victim.getAttributeValue(BACKSTAB_RESISTANCE.get());
+                    double net = backstabBonus - backstabResist;
+                    if (net != 0) {
+                        // net >= 0：线性加成；net < 0：强度模型减伤（resist 已是强度域概率）
+                        amount *= (float) (1 + net);
+                    }
+                }
+            }
+
+            // 仇恨值生成：攻击者为玩家、受害者为敌对生物时累加仇恨
+            if (aggroEnabled && victim instanceof Mob mob && attacker instanceof Player player) {
+                double aggroGain = amount * (1 + player.getAttributeValue(AGGRO.get()));
+                AGGRO_TABLE.computeIfAbsent(mob.getUUID(), k -> new java.util.concurrent.ConcurrentHashMap<>())
+                        .merge(player.getUUID(), aggroGain, Double::sum);
             }
         }
 
@@ -234,6 +283,19 @@ public class AttributesHandler {
             event.setAmount(incomingDamageCapValue);
         }
 
+        // 处理斩杀阈值：受害者当前血量低于阈值时直接处决（对所有生物生效）
+        double executeThreshold = victim.getAttributeValue(EXECUTE_THRESHOLD.get());
+        if (executeThreshold >= 0 && victim.getHealth() > 0 && victim.getHealth() <= executeThreshold) {
+            DamageSource executeSource = event.getSource();
+            victim.setHealth(0.0F);
+            victim.die(executeSource);
+            if (attacker instanceof Player player) {
+                player.displayClientMessage(Component.translatable("more_attributes.execute_triggered"), true);
+            }
+            event.setCanceled(true);
+            return;
+        }
+
 
         // 处理伤害转化
         if (attacker != null) {
@@ -271,12 +333,14 @@ public class AttributesHandler {
 
                 // 处理额外魔法伤害
                 double extraMagicDamage = attacker.getAttributeValue(EXTRA_MAGIC_DAMAGE.get());
-                DamageSource magicSource = HurtManager.getDamageSource(DamageTypes.MAGIC, attacker);
-                HurtManager.extraHurt(victim, magicSource, (float) extraMagicDamage);
+                if (extraMagicDamage > 0) {
+                    DamageSource magicSource = HurtManager.getDamageSource(DamageTypes.MAGIC, attacker);
+                    HurtManager.extraHurt(victim, magicSource, (float) extraMagicDamage);
+                }
             }
 
             // 处理生命窃取
-            damage = event.getAmount();
+            float newDamage = event.getAmount();
             double lifeSteal = attacker.getAttributeValue(LIFE_STEAL.get());
 
             // 根据伤害类型应用对应的专项生命窃取
@@ -287,7 +351,7 @@ public class AttributesHandler {
                     .orElse(false);
             boolean isRangedDamage = source.getDirectEntity() instanceof Projectile;
             boolean isMeleeDamage = attacker == source.getDirectEntity()
-                    && attacker.distanceTo(victim) <= attacker.getAttributeValue(ForgeMod.ENTITY_REACH.get());
+                    && attacker.distanceTo(victim) <= getAttackReach(attacker, victim);
 
             double specificLifeSteal;
             if (isMagicDamage) {
@@ -302,13 +366,36 @@ public class AttributesHandler {
 
             double totalLifeSteal = lifeSteal + specificLifeSteal;
             if (totalLifeSteal > 0) {
-                float stealAmount = damage * (float) totalLifeSteal;
-                if (!unlimitedLiftSteal) {
-                    stealAmount = Math.min(stealAmount, damage);
+                float stealAmount = newDamage * (float) totalLifeSteal;
+                if (!unlimitedLifeSteal) {
+                    stealAmount = Math.min(stealAmount, newDamage);
                 }
                 attacker.heal(stealAmount);
             }
         }
+    }
+
+    private static double getAttackReach(LivingEntity attacker, LivingEntity victim) {
+        // 如果是玩家，直接返回触及距离
+        if (attacker instanceof Player player) {
+            return player.getAttributeValue(ForgeMod.ENTITY_REACH.get());
+        }
+
+        // 如果是怪物，尝试从其正在运行的近战目标中获取攻击距离
+        if (attacker instanceof Mob mob) {
+            return mob.goalSelector.getRunningGoals()
+                    // 过滤出正在执行的近战目标
+                    .filter(goal -> goal.getGoal() instanceof MeleeAttackGoal)
+                    .findFirst()
+                    // 将目标转换为 Accessor 接口
+                    .map(goal -> (MeleeAttackGoalAccessor) goal.getGoal())
+                    // 调用 Accessor 获取攻击距离的平方，并开根号转换为实际距离
+                    .map(accessor -> Math.sqrt(accessor.getAttackReachSqr(victim)))
+                    // 如果当前没有正在运行的近战目标，返回一个默认的怪物近战距离
+                    .orElse(0.0);
+        }
+
+        return 2.0;
     }
 
     @SubscribeEvent(receiveCanceled = true)
@@ -346,18 +433,42 @@ public class AttributesHandler {
 
     public static float getIncomingDamageCapValue(AttributeInstance incomingDamageCap, double maxHealth) {
         if (incomingDamageCap != null) {
-            Set<AttributeModifier> modifiers = incomingDamageCap.getModifiers();
-            Set<AttributeModifier> additions = modifiers.stream().filter(modifier -> modifier.getOperation() == AttributeModifier.Operation.ADDITION).collect(Collectors.toSet());
-            Set<AttributeModifier> multiplications = modifiers.stream().filter(modifier ->
-                    modifier.getOperation() == AttributeModifier.Operation.MULTIPLY_BASE
-                            || modifier.getOperation() == AttributeModifier.Operation.MULTIPLY_TOTAL).collect(Collectors.toSet());
-            // 筛选出最小值
-            double minAddition = additions.stream().min(Comparator.comparingDouble(AttributeModifier::getAmount)).map(AttributeModifier::getAmount).orElse(Double.MAX_VALUE);
-            double minMultiplication =  1 + multiplications.stream().min(Comparator.comparingDouble(AttributeModifier::getAmount)).map(AttributeModifier::getAmount).orElse(1D);
+            double minAddition = Double.MAX_VALUE;
+            double minMultiplication = 1.0;
+
+            // 单次遍历所有修饰符，同时查找加法和乘法中的最小值
+            for (AttributeModifier modifier : incomingDamageCap.getModifiers()) {
+                switch (modifier.getOperation()) {
+                    case ADDITION -> minAddition = Math.min(minAddition, modifier.getAmount());
+                    case MULTIPLY_BASE, MULTIPLY_TOTAL ->
+                            minMultiplication = Math.min(minMultiplication, 1.0 + modifier.getAmount());
+                }
+            }
 
             return (float) Math.min(minAddition, minMultiplication * maxHealth);
         }
         return Float.POSITIVE_INFINITY;
+    }
+
+    /**
+     * 计算斩杀阈值：取所有修饰符中最宽松的（最大）阈值。
+     * ADDITION 模式为固定值，MULTIPLY_BASE/MULTIPLY_TOTAL 为最大生命值百分比。
+     * 无修饰符时返回 -1（永不斩杀）。
+     */
+    public static float getExecuteThresholdValue(AttributeInstance executeThreshold, double maxHealth) {
+        if (executeThreshold != null) {
+            double maxAddition = -1.0;
+            double maxMultiplication = 0.0;
+            for (AttributeModifier modifier : executeThreshold.getModifiers()) {
+                switch (modifier.getOperation()) {
+                    case ADDITION -> maxAddition = Math.max(maxAddition, modifier.getAmount());
+                    case MULTIPLY_BASE, MULTIPLY_TOTAL ->
+                            maxMultiplication = Math.max(maxMultiplication, 1.0 + modifier.getAmount());
+                }
+            }
+            return (float) Math.max(maxAddition, maxMultiplication * maxHealth);
+        }
+        return -1.0f;
     }
 
     @SubscribeEvent
@@ -366,6 +477,73 @@ public class AttributesHandler {
 
         double healingEfficiency = living.getAttributeValue(HEALING_EFFICIENCY.get());
         event.setAmount((float) (event.getAmount() * healingEfficiency));
+    }
+
+    @SubscribeEvent
+    public static void onPlayerXpChange(PlayerXpEvent.XpChange event) {
+        Player player = event.getEntity();
+        double ratio = player.getAttributeValue(EXPERIENCE_GAIN_RATIO.get());
+        if (ratio != 1.0) {
+            event.setAmount((int) Math.round(event.getAmount() * ratio));
+        }
+    }
+
+    @SubscribeEvent
+    public static void onMobDeath(LivingDeathEvent event) {
+        // 怪物死亡时清除其仇恨条目
+        AGGRO_TABLE.remove(event.getEntity().getUUID());
+    }
+
+    @SubscribeEvent
+    public static void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) {
+        // 玩家重生时清除其在所有怪物仇恨表中的条目
+        removePlayerFromAggroTable(event.getEntity().getUUID());
+    }
+
+    @SubscribeEvent
+    public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        // 玩家退出时清除其在所有怪物仇恨表中的条目
+        removePlayerFromAggroTable(event.getEntity().getUUID());
+    }
+
+    private static void removePlayerFromAggroTable(UUID playerUUID) {
+        for (Map<UUID, Double> entries : AGGRO_TABLE.values()) {
+            entries.remove(playerUUID);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onLivingChangeTarget(LivingChangeTargetEvent event) {
+        if (!aggroEnabled) return;
+        // 仅拦截敌对生物将目标切换为玩家的情况
+        if (!(event.getEntity() instanceof Mob mob) || !(mob instanceof Enemy)) return;
+        if (!(event.getNewTarget() instanceof Player originalTarget)) return;
+
+        Map<UUID, Double> aggroEntries = AGGRO_TABLE.get(mob.getUUID());
+        if (aggroEntries == null || aggroEntries.isEmpty()) return;
+
+        // 在 follow_range 范围内寻找仇恨值最高的玩家
+        double followRange = mob.getAttributeValue(Attributes.FOLLOW_RANGE);
+        AABB searchBox = mob.getBoundingBox().inflate(followRange);
+        List<Player> nearbyPlayers = mob.level().getEntitiesOfClass(Player.class, searchBox);
+
+        UUID highestUUID = null;
+        double highestAggro = 0;
+        for (Player p : nearbyPlayers) {
+            if (!p.isAlive() || p.isSpectator()) continue;
+            double aggro = aggroEntries.getOrDefault(p.getUUID(), 0.0);
+            if (aggro > highestAggro) {
+                highestAggro = aggro;
+                highestUUID = p.getUUID();
+            }
+        }
+
+        if (highestUUID != null && !highestUUID.equals(originalTarget.getUUID())) {
+            Player newTarget = mob.level().getPlayerByUUID(highestUUID);
+            if (newTarget != null && newTarget.isAlive()) {
+                event.setNewTarget(newTarget);
+            }
+        }
     }
 
     @SubscribeEvent
@@ -379,6 +557,51 @@ public class AttributesHandler {
         // 处理百分比再生属性
         double percentRegen = living.getAttributeValue(PERCENT_HEALTH_REGEN.get());
         living.heal((float) (living.getMaxHealth() * percentRegen/20.0));
+
+        if (living instanceof Player player && !player.level().isClientSide) {
+            // 处理物品拾取半径（磁吸效果）
+            double radius = player.getAttributeValue(PICKUP_RADIUS.get());
+            if (radius > 0) {
+                AABB box = new AABB(player.getOnPos()).inflate(radius);
+                player.level().getEntitiesOfClass(ItemEntity.class, box, item -> true).forEach(item -> {
+                    if (item.isRemoved()) return;
+                    item.addDeltaMovement(
+                            player.position().subtract(item.getX(), item.getY(), item.getZ()).normalize().scale(0.05F).add(0, 0.04F, 0)
+                    );
+                    item.move(MoverType.SELF, item.getDeltaMovement());
+                });
+                player.level().getEntitiesOfClass(ExperienceOrb.class, box, orb -> true).forEach(orb -> {
+                    if (orb.isRemoved()) return;
+                    orb.addDeltaMovement(
+                            player.position().subtract(orb.getX(), orb.getY(), orb.getZ()).normalize().scale(0.05F).add(0, 0.04F, 0)
+                    );
+                    orb.move(MoverType.SELF, orb.getDeltaMovement());
+                });
+            }
+
+            // 仇恨值被动嘲讽（config 开关，默认关）
+            if (aggroEnabled && aggroPassiveTaunt && player.tickCount % 20 == 0) {
+                double aggroAttr = player.getAttributeValue(AGGRO.get());
+                if (aggroAttr > 0) {
+                    AABB tauntBox = player.getBoundingBox().inflate(aggroRange);
+                    List<Mob> nearbyMobs = player.level().getEntitiesOfClass(Mob.class, tauntBox);
+                    for (Mob mob : nearbyMobs) {
+                        AGGRO_TABLE.computeIfAbsent(mob.getUUID(), k -> new java.util.concurrent.ConcurrentHashMap<>())
+                                .merge(player.getUUID(), aggroAttr * 0.1, Double::sum);
+                    }
+                }
+            }
+        }
+
+        // 仇恨值衰减（仅服务端、仅Mob）
+        if (aggroEnabled && living instanceof Mob mob && !living.level().isClientSide && mob.tickCount % aggroRetargetInterval == 0) {
+            Map<UUID, Double> aggroEntries = AGGRO_TABLE.get(mob.getUUID());
+            if (aggroEntries != null && !aggroEntries.isEmpty()) {
+                double decay = 1.0 - aggroDecayRate;
+                aggroEntries.replaceAll((k, v) -> v * decay);
+                aggroEntries.values().removeIf(v -> v < 0.1);
+            }
+        }
     }
 
     @SubscribeEvent

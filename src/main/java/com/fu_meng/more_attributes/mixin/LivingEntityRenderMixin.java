@@ -20,10 +20,10 @@ public class LivingEntityRenderMixin {
                     shift = At.Shift.AFTER
             )
     )
-    private void onAfterScale(LivingEntity entity, float entityYaw, float partialTicks, PoseStack poseStack, MultiBufferSource bufferSource, int packedLight, CallbackInfo ci) {
-        double scale = AttributeCalculationHelper.getScaleFactor(entity);
+    private void onAfterScale(LivingEntity pEntity, float pEntityYaw, float pPartialTicks, PoseStack pPoseStack, MultiBufferSource pBuffer, int pPackedLight, CallbackInfo ci) {
+        double scale = AttributeCalculationHelper.getScaleFactor(pEntity);
         if (scale != 1.0) {
-            poseStack.scale((float) scale, (float) scale, (float) scale);
+            pPoseStack.scale((float) scale, (float) scale, (float) scale);
         }
     }
 }

@@ -13,9 +13,9 @@ import static com.fu_meng.more_attributes.AttributesRegistry.HUNGER_RATE;
 public abstract class FoodDataMixin {
 
     @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/food/FoodData;addExhaustion(F)V"))
-    private void redirectExhaustion(FoodData instance, float pExhaustion, Player player) {
+    private void redirectExhaustion(FoodData instance, float pExhaustion, Player pPlayer) {
         if (MAConfig.hungerRateAffectRegeneration) {
-            double hungerRate = player.getAttributeValue(HUNGER_RATE.get());
+            double hungerRate = pPlayer.getAttributeValue(HUNGER_RATE.get());
             float exhaustion = Math.max((float) (pExhaustion * hungerRate), 0.0F);
             instance.addExhaustion(exhaustion);
         } else {

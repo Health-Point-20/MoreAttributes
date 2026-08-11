@@ -20,119 +20,146 @@ import java.util.List;
 public class AttributesRegistry {
     public static final DeferredRegister<Attribute> ATTRIBUTES =
             DeferredRegister.create(ForgeRegistries.ATTRIBUTES, MoreAttributesMod.MODID);
-    private static final double Min = -Double.MAX_VALUE;
-    private static final double Max = Double.MAX_VALUE;
+    private static final double MIN = -Double.MAX_VALUE;
+    private static final double MAX = Double.MAX_VALUE;
 
     public static final RegistryObject<Attribute> INCOMING_DAMAGE_CAP = ATTRIBUTES.register("incoming_damage_cap",
-            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".incoming_damage_cap", 0.0, -1.0, Max).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".incoming_damage_cap", 0.0, -1.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> EVASION = ATTRIBUTES.register("evasion",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".evasion", 0.0, 0.0, 1.0)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".evasion", 0.0, 0.0, 1.0).setSyncable(true));
 
     public static final RegistryObject<Attribute> HIT_RATE = ATTRIBUTES.register("hit_rate",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".hit_rate", 1.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".hit_rate", 1.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> FINAL_HIT_RATE = ATTRIBUTES.register("final_hit_rate",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".final_hit_rate", 0.0, Min, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".final_hit_rate", 0.0, MIN, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> FINAL_EVASION = ATTRIBUTES.register("final_evasion",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".final_evasion", 0.0, Min, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".final_evasion", 0.0, MIN, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> IGNORE_INVINCIBLE_TIME = ATTRIBUTES.register("ignore_invincible_time",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".ignore_invincible_time", 0.0, Min, 1)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".ignore_invincible_time", 0.0, MIN, 1).setSyncable(true));
 
     public static final RegistryObject<Attribute> INVINCIBLE_TIME = ATTRIBUTES.register("invincible_time",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".invincible_time", 1.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".invincible_time", 1.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> PHYSICAL_DAMAGE_REDUCTION = ATTRIBUTES.register("physical_damage_reduction",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".physical_damage_reduction", 0.0, Min, 1)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".physical_damage_reduction", 0.0, MIN, 1).setSyncable(true));
 
     public static final RegistryObject<Attribute> ENVIRONMENTAL_DAMAGE_REDUCTION = ATTRIBUTES.register("environmental_damage_reduction",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".environmental_damage_reduction", 0.0, Min, 1)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".environmental_damage_reduction", 0.0, MIN, 1).setSyncable(true));
 
     public static final RegistryObject<Attribute> MAGIC_DAMAGE_REDUCTION = ATTRIBUTES.register("magic_damage_reduction",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_damage_reduction", 0.0, Min, 1)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_damage_reduction", 0.0, MIN, 1).setSyncable(true));
 
     public static final RegistryObject<Attribute> DAMAGE_REDUCTION = ATTRIBUTES.register("damage_reduction",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".damage_reduction", 0.0, Min, 1)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".damage_reduction", 0.0, MIN, 1).setSyncable(true));
 
     public static final RegistryObject<Attribute> MAGIC_ARMOR = ATTRIBUTES.register("magic_armor",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_armor", 0, 0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_armor", 0, 0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> MAGIC_ARMOR_TOUGHNESS = ATTRIBUTES.register("magic_armor_toughness",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_armor_toughness", 0, 0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_armor_toughness", 0, 0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> EATING_SPEED = ATTRIBUTES.register("eating_speed",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".eating_speed", 1.0, 0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".eating_speed", 1.0, 0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> DRAW_SPEED = ATTRIBUTES.register("draw_speed",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".draw_speed", 1.0, 0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".draw_speed", 1.0, 0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> ARROW_DAMAGE = ATTRIBUTES.register("arrow_damage",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".arrow_damage", 1.0, 0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".arrow_damage", 1.0, 0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> ARROW_VELOCITY = ATTRIBUTES.register("arrow_velocity",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".arrow_velocity", 1.0, 0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".arrow_velocity", 1.0, 0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> CRITICAL_CHANCE = ATTRIBUTES.register("critical_chance",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".critical_chance", 0.0, 0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".critical_chance", 0.0, 0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> CRITICAL_DAMAGE = ATTRIBUTES.register("critical_damage",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".critical_damage", 1.5, 0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".critical_damage", 1.5, 0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> HEALTH_REGEN = ATTRIBUTES.register("health_regen",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".health_regen", 0.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".health_regen", 0.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> LIFE_STEAL = ATTRIBUTES.register("life_steal",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".life_steal", 0.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".life_steal", 0.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> MELEE_LIFE_STEAL = ATTRIBUTES.register("melee_life_steal",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".melee_life_steal", 0.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".melee_life_steal", 0.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> RANGED_LIFE_STEAL = ATTRIBUTES.register("ranged_life_steal",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".ranged_life_steal", 0.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".ranged_life_steal", 0.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> MAGIC_LIFE_STEAL = ATTRIBUTES.register("magic_life_steal",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_life_steal", 0.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_life_steal", 0.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> HUNGER_RATE = ATTRIBUTES.register("hunger_rate",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".hunger_rate", 1.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".hunger_rate", 1.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> OXYGEN_CONSUMPTION_RATE = ATTRIBUTES.register("oxygen_consumption_rate",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".oxygen_consumption_rate", 1.0, Min, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".oxygen_consumption_rate", 1.0, MIN, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> TRUE_DAMAGE_RATIO = ATTRIBUTES.register("true_damage_ratio",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".true_damage_ratio", 0.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".true_damage_ratio", 0.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> EXTRA_TRUE_DAMAGE = ATTRIBUTES.register("extra_true_damage",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".extra_true_damage", 0.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".extra_true_damage", 0.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> MAGIC_DAMAGE_RATIO = ATTRIBUTES.register("magic_damage_ratio",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_damage_ratio", 0.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_damage_ratio", 0.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> EXTRA_MAGIC_DAMAGE = ATTRIBUTES.register("extra_magic_damage",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".extra_magic_damage", 0.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".extra_magic_damage", 0.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> MAGIC_DAMAGE_MULTIPLIER = ATTRIBUTES.register("magic_damage_multiplier",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_damage_multiplier", 1.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_damage_multiplier", 1.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> MINING_SPEED = ATTRIBUTES.register("mining_speed",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".mining_speed", 1.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".mining_speed", 1.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> HEALING_EFFICIENCY = ATTRIBUTES.register("healing_efficiency",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".healing_efficiency", 1.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".healing_efficiency", 1.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> PERCENT_HEALTH_REGEN = ATTRIBUTES.register("percent_health_regen",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".percent_health_regen", 0, 0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".percent_health_regen", 0, 0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> MINIMUM_INJURY_INTERVAL = ATTRIBUTES.register("minimum_injury_interval",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".minimum_injury_interval", 0.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".minimum_injury_interval", 0.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> DAMAGE_MULTIPLIER = ATTRIBUTES.register("damage_multiplier",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".damage_multiplier", 1.0, 0.0, Max)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".damage_multiplier", 1.0, 0.0, MAX).setSyncable(true));
 
     public static final RegistryObject<Attribute> SCALE = ATTRIBUTES.register("scale",
-            () -> (new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".scale", 1.0, 0.0, 100)).setSyncable(true));
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".scale", 1.0, 0.0, 100).setSyncable(true));
+
+    public static final RegistryObject<Attribute> COOLDOWN_REDUCTION = ATTRIBUTES.register("cooldown_reduction",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".cooldown_reduction", 0.0, MIN, 1.0).setSyncable(true));
+
+    public static final RegistryObject<Attribute> DAMAGE_REFLECTION = ATTRIBUTES.register("damage_reflection",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".damage_reflection", 0.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> EXECUTE_THRESHOLD = ATTRIBUTES.register("execute_threshold",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".execute_threshold", 0.0, -1.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> BACKSTAB_DAMAGE = ATTRIBUTES.register("backstab_damage",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".backstab_damage", 0.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> BACKSTAB_RESISTANCE = ATTRIBUTES.register("backstab_resistance",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".backstab_resistance", 0.0, 0.0, 1.0).setSyncable(true));
+
+    public static final RegistryObject<Attribute> AGGRO = ATTRIBUTES.register("aggro",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".aggro", 0.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> CLIMBING_SPEED = ATTRIBUTES.register("climbing_speed",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".climbing_speed", 1.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> EXPERIENCE_GAIN_RATIO = ATTRIBUTES.register("experience_gain_ratio",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".experience_gain_ratio", 1.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> PICKUP_RADIUS = ATTRIBUTES.register("pickup_radius",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".pickup_radius", 0.0, 0.0, MAX).setSyncable(true));
 
     @SubscribeEvent
     public static void addAttributes(EntityAttributeModificationEvent event) {
@@ -169,14 +196,23 @@ public class AttributesRegistry {
                 DAMAGE_MULTIPLIER,
                 MINIMUM_INJURY_INTERVAL,
                 OXYGEN_CONSUMPTION_RATE,
-                SCALE
+                SCALE,
+                DAMAGE_REFLECTION,
+                EXECUTE_THRESHOLD,
+                BACKSTAB_DAMAGE,
+                BACKSTAB_RESISTANCE,
+                CLIMBING_SPEED
         );
 
         List<RegistryObject<Attribute>> attributesForPlayer = Arrays.asList(
                 EATING_SPEED,
                 DRAW_SPEED,
                 HUNGER_RATE,
-                MINING_SPEED
+                MINING_SPEED,
+                COOLDOWN_REDUCTION,
+                AGGRO,
+                EXPERIENCE_GAIN_RATIO,
+                PICKUP_RADIUS
         );
 
         for (RegistryObject<Attribute> attribute : attributesForLiving) {

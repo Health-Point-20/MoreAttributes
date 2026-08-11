@@ -27,15 +27,40 @@ public class AttributeFormatter {
             return formatIncomingDamageCap(itemValue, attributeName, modifier, flag);
         }
 
-        // 非 ADDITION 操作追加"效力"后缀以示区分
+        if (attribute.equals(EXECUTE_THRESHOLD.get())) {
+            return formatExecuteThreshold(itemValue, attributeName, modifier, flag);
+        }
+
+        // 非 ADDITION 操作追加"效力"后缀以示区分（空格由语言文件控制，适配中英文排版差异）
         if (modifier.getOperation() != AttributeModifier.Operation.ADDITION) {
-            attributeName += " " + Component.translatable("attribute.modifier.potency").getString();
+            attributeName += Component.translatable("attribute.modifier.potency").getString();
         }
 
         return formatPercentage(itemValue, attributeName, modifier, flag);
     }
 
     private static MutableComponent formatIncomingDamageCap(double itemValue, String attributeName, AttributeModifier modifier, TooltipFlag flag) {
+        MutableComponent comp;
+        if (modifier.getOperation() == AttributeModifier.Operation.ADDITION) {
+            String formattedValue = ItemStack.ATTRIBUTE_MODIFIER_FORMAT.format(itemValue);
+            comp = Component.literal(attributeName + ": " + formattedValue).withStyle(ChatFormatting.BLUE);
+        } else {
+            double percentage = (1 + itemValue) * 100;
+            String formattedValue = ItemStack.ATTRIBUTE_MODIFIER_FORMAT.format(percentage);
+            comp = Component.literal(attributeName + ": " + formattedValue + "%").withStyle(ChatFormatting.BLUE);
+        }
+
+        if (flag.isAdvanced()) {
+            comp.append(Component.literal(" " + formatAdvancedTooltip(itemValue, modifier)).withStyle(ChatFormatting.GRAY));
+        }
+        return comp;
+    }
+
+    /**
+     * 斩杀阈值的 tooltip 格式化，逻辑与伤害上限一致：
+     * ADDITION 显示固定数值，MULTIPLY 显示 (1+amount)×100% 的最大生命值百分比。
+     */
+    private static MutableComponent formatExecuteThreshold(double itemValue, String attributeName, AttributeModifier modifier, TooltipFlag flag) {
         MutableComponent comp;
         if (modifier.getOperation() == AttributeModifier.Operation.ADDITION) {
             String formattedValue = ItemStack.ATTRIBUTE_MODIFIER_FORMAT.format(itemValue);
@@ -65,7 +90,10 @@ public class AttributeFormatter {
             MINING_SPEED.get(), HUNGER_RATE.get(),
             PERCENT_HEALTH_REGEN.get(), HEALING_EFFICIENCY.get(),
             MAGIC_DAMAGE_MULTIPLIER.get(), DAMAGE_MULTIPLIER.get(),
-            OXYGEN_CONSUMPTION_RATE.get(), SCALE.get()
+            OXYGEN_CONSUMPTION_RATE.get(), SCALE.get(),
+            BACKSTAB_DAMAGE.get(), BACKSTAB_RESISTANCE.get(),
+            CLIMBING_SPEED.get(), EXPERIENCE_GAIN_RATIO.get(),
+            AGGRO.get()
     );
 
     public static boolean isPercentageAttribute(Attribute attribute) {
@@ -73,10 +101,12 @@ public class AttributeFormatter {
     }
 
     /**
-     * 判断该属性是否需要用自定义格式替换原版提示行（百分比属性与伤害上限）。
+     * 判断该属性是否需要用自定义格式替换原版提示行（百分比属性、伤害上限与斩杀阈值）。
      */
     public static boolean isCustomFormattedAttribute(Attribute attribute) {
-        return isPercentageAttribute(attribute) || attribute.equals(INCOMING_DAMAGE_CAP.get());
+        return isPercentageAttribute(attribute)
+                || attribute.equals(INCOMING_DAMAGE_CAP.get())
+                || attribute.equals(EXECUTE_THRESHOLD.get());
     }
 
     private static String getLocalizedAttributeName(Attribute attribute) {

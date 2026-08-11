@@ -146,7 +146,7 @@
 |--------------------------------|--------------|-------|--------------------|
 | `hungerRateAffectRegeneration` | Boolean      | false | 饥饿速率是否影响回血时的消耗     |
 | `strongerTrueDamage`           | Boolean      | false | 开启后会增强真实伤害的效果      |
-| `unlimitedLiftSteal`           | Boolean      | false | 生命窃取能否吸取比造成伤害更多的血量 |
+| `unlimitedLifeSteal`           | Boolean      | false | 生命窃取能否吸取比造成伤害更多的血量 |
 | `consideredMagicDamage`        | String List  | 见下    | 被视为魔法伤害的伤害类型列表     |
 
 **consideredMagicDamage 默认值**：

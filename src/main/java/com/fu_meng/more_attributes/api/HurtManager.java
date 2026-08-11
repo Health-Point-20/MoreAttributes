@@ -19,6 +19,7 @@ import com.fu_meng.more_attributes.mixin.LivingEntityAccessor;
 import javax.annotation.Nullable;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static com.fu_meng.more_attributes.MoreAttributesMod.queueServerWork;
 import static com.fu_meng.more_attributes.MoreAttributesMod.LOGGER;
@@ -26,7 +27,7 @@ import static com.fu_meng.more_attributes.MoreAttributesMod.LOGGER;
 @Mod.EventBusSubscriber
 public class HurtManager {
 
-    // 存储额外伤害信息的Map
+    // 存储额外伤害信息的Map（使用 CopyOnWriteArrayList 保证线程安全）
     private static final Map<LivingEntity, List<ExtraHurtData>> extraHurtQueue = new ConcurrentHashMap<>();
 
     // 存储玩家横扫攻击的主要目标
@@ -79,7 +80,7 @@ public class HurtManager {
      */
     public static void extraHurt(LivingEntity target, DamageSource source, float damage) {
        if (!onDealExtraDamage && target.isAlive() && !target.level().isClientSide()) {
-            extraHurtQueue.computeIfAbsent(target, k -> new ArrayList<>()).add(new ExtraHurtData(source, damage));
+            extraHurtQueue.computeIfAbsent(target, k -> new CopyOnWriteArrayList<>()).add(new ExtraHurtData(source, damage));
         }
     }
 

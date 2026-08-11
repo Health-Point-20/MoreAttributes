@@ -17,9 +17,10 @@ import java.util.Set;
 
 import static com.fu_meng.more_attributes.AttributesRegistry.*;
 import static com.fu_meng.more_attributes.api.AttributeCalculationHelper.getProbability;
+import static com.fu_meng.more_attributes.handler.AttributesHandler.getExecuteThresholdValue;
 import static com.fu_meng.more_attributes.handler.AttributesHandler.getIncomingDamageCapValue;
 
-import com.fu_meng.more_attributes.api.AttributeInstanceAccessor;
+import com.fu_meng.more_attributes.api.accessor.AttributeInstanceAccessor;
 
 
 @Mixin(AttributeMap.class)
@@ -37,7 +38,8 @@ public abstract class AttributeMapMixin {
             ENVIRONMENTAL_DAMAGE_REDUCTION.get(),
             DAMAGE_REDUCTION.get(),
             EVASION.get(),
-            IGNORE_INVINCIBLE_TIME.get()
+            IGNORE_INVINCIBLE_TIME.get(),
+            BACKSTAB_RESISTANCE.get()
     );
 
     @Inject(method = "getValue", at = @At("RETURN"), cancellable = true)
@@ -53,6 +55,13 @@ public abstract class AttributeMapMixin {
             if (attributes.containsKey(maxHealthAttribute)) {
                 double maxHealth = attributes.get(maxHealthAttribute).getValue();
                 cir.setReturnValue((double) getIncomingDamageCapValue(instance, maxHealth));
+            }
+        } else if (pAttribute == EXECUTE_THRESHOLD.get()) {
+            Attribute maxHealthAttribute = Attributes.MAX_HEALTH;
+
+            if (attributes.containsKey(maxHealthAttribute)) {
+                double maxHealth = attributes.get(maxHealthAttribute).getValue();
+                cir.setReturnValue((double) getExecuteThresholdValue(instance, maxHealth));
             }
         }
     }

@@ -37,5 +37,15 @@
   "attribute.more_attributes.healing_efficiency": "受疗效果",
   "attribute.more_attributes.minimum_injury_interval": "最小受伤间隔",
   "attribute.more_attributes.oxygen_consumption_rate": "耗氧速率",
-  "attribute.more_attributes.scale": "尺寸"
+  "attribute.more_attributes.scale": "尺寸",
+  "attribute.more_attributes.damage_reflection": "反伤比例",
+  "attribute.more_attributes.cooldown_reduction": "冷却缩减",
+  "attribute.more_attributes.execute_threshold": "斩杀阈值",
+  "attribute.more_attributes.backstab_damage": "背刺伤害加成",
+  "attribute.more_attributes.backstab_resistance": "背刺伤害抵抗",
+  "attribute.more_attributes.aggro": "仇恨值",
+  "attribute.more_attributes.climbing_speed": "攀爬速度",
+  "attribute.more_attributes.experience_gain_ratio": "经验获得比例",
+  "attribute.more_attributes.pickup_radius": "拾取半径",
+  "more_attributes.execute_triggered": "处决！"
 }

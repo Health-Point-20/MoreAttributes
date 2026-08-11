@@ -1,9 +1,8 @@
 package com.fu_meng.more_attributes.mixin;
 
-import com.fu_meng.more_attributes.api.AttributeCalculationHelper;
-import net.minecraft.world.entity.EntityDimensions;
-import net.minecraft.world.entity.Pose;
+import com.fu_meng.more_attributes.api.accessor.ItemCooldownsAccessor;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemCooldowns;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -21,15 +20,14 @@ public class PlayerMixin {
         return Math.max((float) (exhaustion * hungerRate), 0.0F);
     }
 
-    // Player 重写了 getDimensions，直接从 EnumMap 返回固定尺寸，不调用 super.getDimensions()，
-    // 故 LivingEntityMixin.onGetDimensions 对 Player 不生效，需在此单独注入。
-    @Inject(method = "getDimensions", at = @At("RETURN"), cancellable = true)
-    private void moreAttributes$onGetDimensions(Pose pose, CallbackInfoReturnable<EntityDimensions> cir) {
-        Player self = (Player) (Object) this;
-        double scale = AttributeCalculationHelper.getScaleFactor(self);
-        if (scale != 1.0F) {
-            EntityDimensions base = cir.getReturnValue();
-            cir.setReturnValue(base.scale((float) scale));
+    /**
+     * 每次 getCooldowns() 返回时，将 Player 自身注入到 ItemCooldowns 中。
+     */
+    @Inject(method = "getCooldowns", at = @At("RETURN"))
+    private void moreAttributes$InjectPlayerRef(CallbackInfoReturnable<ItemCooldowns> cir) {
+        ItemCooldowns cooldowns = cir.getReturnValue();
+        if (cooldowns instanceof ItemCooldownsAccessor accessor) {
+            accessor.more_attributes$setPlayer((Player) (Object) this);
         }
     }
 }
