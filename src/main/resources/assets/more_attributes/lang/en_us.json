@@ -1,5 +1,6 @@
 {
   "more_attributes.hit_miss": "Your attacks are dodged by %s",
+  "more_attributes.execute_triggered": "§cExecuted!",
 
   "attribute.modifier.potency": " Potency",
   "attribute.more_attributes.incoming_damage_cap": "Incoming Damage Cap",
@@ -48,5 +49,8 @@
   "attribute.more_attributes.climbing_speed": "Climbing Speed",
   "attribute.more_attributes.experience_gain_ratio": "Experience Gain Ratio",
   "attribute.more_attributes.pickup_radius": "Pickup Radius",
-  "more_attributes.execute_triggered": "Executed!"
+  "attribute.more_attributes.multishot_amount": "Multishot Amount",
+  "attribute.more_attributes.melee_splash_range": "Melee Splash Range",
+  "attribute.more_attributes.melee_splash_ratio": "Melee Splash Ratio",
+  "attribute.more_attributes.arrow_pierce": "Arrow Pierce"
 }

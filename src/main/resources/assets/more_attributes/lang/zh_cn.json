@@ -1,5 +1,7 @@
 {
   "more_attributes.hit_miss": "你的攻击被 %s 闪避了",
+  "more_attributes.execute_triggered": "§c处决！",
+
   "attribute.modifier.potency": "效力",
   "attribute.more_attributes.incoming_damage_cap": "受到伤害上限",
   "attribute.more_attributes.evasion": "闪避率",
@@ -47,5 +49,8 @@
   "attribute.more_attributes.climbing_speed": "攀爬速度",
   "attribute.more_attributes.experience_gain_ratio": "经验获得比例",
   "attribute.more_attributes.pickup_radius": "拾取半径",
-  "more_attributes.execute_triggered": "处决！"
+  "attribute.more_attributes.multishot_amount": "多重射击",
+  "attribute.more_attributes.melee_splash_range": "近战溅射半径",
+  "attribute.more_attributes.melee_splash_ratio": "近战溅射比例",
+  "attribute.more_attributes.arrow_pierce": "箭矢穿透"
 }

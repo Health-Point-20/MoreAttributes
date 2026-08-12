@@ -161,6 +161,18 @@ public class AttributesRegistry {
     public static final RegistryObject<Attribute> PICKUP_RADIUS = ATTRIBUTES.register("pickup_radius",
             () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".pickup_radius", 0.0, 0.0, MAX).setSyncable(true));
 
+    public static final RegistryObject<Attribute> MELEE_SPLASH_RANGE = ATTRIBUTES.register("melee_splash_range",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".melee_splash_range", 0.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> MELEE_SPLASH_RATIO = ATTRIBUTES.register("melee_splash_ratio",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".melee_splash_ratio", 0.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> MULTISHOT_AMOUNT = ATTRIBUTES.register("multishot_amount",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".multishot_amount", 0.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> ARROW_PIERCE = ATTRIBUTES.register("arrow_pierce",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".arrow_pierce", 0.0, 0.0, MAX).setSyncable(true));
+
     @SubscribeEvent
     public static void addAttributes(EntityAttributeModificationEvent event) {
         List<RegistryObject<Attribute>> attributesForLiving = Arrays.asList(
@@ -201,7 +213,11 @@ public class AttributesRegistry {
                 EXECUTE_THRESHOLD,
                 BACKSTAB_DAMAGE,
                 BACKSTAB_RESISTANCE,
-                CLIMBING_SPEED
+                CLIMBING_SPEED,
+                MELEE_SPLASH_RANGE,
+                MELEE_SPLASH_RATIO,
+                ARROW_PIERCE,
+                MULTISHOT_AMOUNT
         );
 
         List<RegistryObject<Attribute>> attributesForPlayer = Arrays.asList(

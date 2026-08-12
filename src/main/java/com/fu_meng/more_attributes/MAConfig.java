@@ -21,6 +21,7 @@ public class MAConfig {
     public static final ForgeConfigSpec.BooleanValue HUNGER_RATE_AFFECT_REGENERATION;
     public static final ForgeConfigSpec.BooleanValue STRONGER_TRUE_DAMAGE;
     public static final ForgeConfigSpec.BooleanValue UNLIMITED_LIFE_STEAL;
+    public static final ForgeConfigSpec.BooleanValue UNLIMITED_SPLASH_DAMAGE;
     public static final ForgeConfigSpec.BooleanValue APOTHEOSIS_CRIT_COMPATIBILITY;
     public static final ForgeConfigSpec.BooleanValue DISPLAY_MAGIC_ARMOR;
     public static final ForgeConfigSpec.IntValue MAGIC_ARMOR_DISPLAY_MODE;
@@ -28,16 +29,13 @@ public class MAConfig {
     public static final ForgeConfigSpec.IntValue MAGIC_ARMOR_BAR_STYLE;
     public static final ForgeConfigSpec.IntValue MAGIC_ARMOR_BAR_MAX_VALUE;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> CONSIDERED_MAGIC_DAMAGE;
-
     public static final ForgeConfigSpec.BooleanValue AGGRO_ENABLED;
-    public static final ForgeConfigSpec.BooleanValue AGGRO_PASSIVE_TAUNT;
-    public static final ForgeConfigSpec.DoubleValue AGGRO_DECAY_RATE;
-    public static final ForgeConfigSpec.IntValue AGGRO_RETARGET_INTERVAL;
-    public static final ForgeConfigSpec.DoubleValue AGGRO_RANGE;
+    public static final ForgeConfigSpec.DoubleValue MULTISHOT_SPREAD_PER_POINT;
 
     public static boolean hungerRateAffectRegeneration;
     public static boolean strongerTrueDamage;
     public static boolean unlimitedLifeSteal;
+    public static boolean unlimitedSplashDamage;
     public static boolean ApotheosisCritCompatibility;
     public static boolean displayMagicArmor;
     public static int magicArmorDisplayMode;
@@ -46,16 +44,14 @@ public class MAConfig {
     public static int magicArmorBarMaxValue;
     public static Set<ResourceLocation> consideredMagicDamage;
     public static boolean aggroEnabled;
-    public static boolean aggroPassiveTaunt;
-    public static double aggroDecayRate;
-    public static int aggroRetargetInterval;
-    public static double aggroRange;
+    public static double multishotSpreadPerPoint;
 
     static {
         BUILDER.push("More Attributes Config");
         HUNGER_RATE_AFFECT_REGENERATION = BUILDER.comment("Whether hunger rate affects regeneration rate.").comment("饥饿速率是否影响回血时的消耗").define("hungerRateAffectRegeneration", false);
         STRONGER_TRUE_DAMAGE = BUILDER.comment("Whether stronger true damage.").comment("是否启用更强硬的真伤").define("strongerTrueDamage", false);
         UNLIMITED_LIFE_STEAL = BUILDER.comment("Can life-steal absorb more health points than causing damage?").comment("生命窃取能否吸取比造成伤害更多的血量").define("unlimitedLiftSteal", false);
+        UNLIMITED_SPLASH_DAMAGE = BUILDER.comment("Can melee splash damage more than causing damage?").comment("近战伤害溅射能溅射比造成伤害更高的伤害").define("unlimitedSplashDamage", false);
         APOTHEOSIS_CRIT_COMPATIBILITY = BUILDER.comment("Whether to stack this mod's crit chance and crit damage onto Apotheosis's corresponding attributes.").comment("是否将本模组的暴击率和暴击伤害属性值叠加到神化模组的对应属性上").define("apotheosisCritCompatibility", false);
 
         DISPLAY_MAGIC_ARMOR = BUILDER.comment("Whether to display the magic armor bar in the HUD like vanilla armor.").comment("是否像原版护甲一样在HUD中显示魔法护甲条").define("displayMagicArmor", true);
@@ -77,11 +73,9 @@ public class MAConfig {
                 "botania:magic"
         ), o -> o instanceof String);
 
-        AGGRO_ENABLED = BUILDER.comment("Whether the aggro (threat) attribute system is enabled.").comment("是否启用仇恨值属性系统").define("aggroEnabled", true);
-        AGGRO_PASSIVE_TAUNT = BUILDER.comment("Whether high aggro players passively attract nearby mobs each tick.").comment("高仇恨值玩家是否每tick被动吸引附近怪物").define("aggroPassiveTaunt", false);
-        AGGRO_DECAY_RATE = BUILDER.comment("Aggro decay rate per retarget interval tick (0.005 ≈ half life 20s).").comment("每次重定向间隔的仇恨衰减率（0.005 约半衰期20秒）").defineInRange("aggroDecayRate", 0.005, 0.0, 0.1);
-        AGGRO_RETARGET_INTERVAL = BUILDER.comment("Retarget interval in ticks.").comment("重定向间隔（tick）").defineInRange("aggroRetargetInterval", 20, 1, 100);
-        AGGRO_RANGE = BUILDER.comment("Effective range for aggro retargeting.").comment("仇恨重定向生效距离").defineInRange("aggroRange", 32.0, 1.0, 128.0);
+        AGGRO_ENABLED = BUILDER.comment("Whether the aggro (threat) attribute is enabled.").comment("是否启用仇恨值属性").define("aggroEnabled", true);
+
+        MULTISHOT_SPREAD_PER_POINT = BUILDER.comment("Spread angle per multishot point in degrees. Total spread grows with the attribute value.").comment("每点多重射击属性的散布角度（度），总散布角度随属性值增长").defineInRange("multishotSpreadPerPoint", 5.0, 0.1, 180.0);
 
         BUILDER.pop();
         SPEC = BUILDER.build();
@@ -96,6 +90,7 @@ public class MAConfig {
     static void onLoad(final ModConfigEvent event) {
         hungerRateAffectRegeneration = HUNGER_RATE_AFFECT_REGENERATION.get();
         strongerTrueDamage = STRONGER_TRUE_DAMAGE.get();
+        unlimitedSplashDamage = UNLIMITED_SPLASH_DAMAGE.get();
         unlimitedLifeSteal = UNLIMITED_LIFE_STEAL.get();
         ApotheosisCritCompatibility = APOTHEOSIS_CRIT_COMPATIBILITY.get();
         displayMagicArmor = DISPLAY_MAGIC_ARMOR.get();
@@ -105,10 +100,7 @@ public class MAConfig {
         magicArmorBarMaxValue = MAGIC_ARMOR_BAR_MAX_VALUE.get();
         consideredMagicDamage = parseResourceLocations(CONSIDERED_MAGIC_DAMAGE.get());
         aggroEnabled = AGGRO_ENABLED.get();
-        aggroPassiveTaunt = AGGRO_PASSIVE_TAUNT.get();
-        aggroDecayRate = AGGRO_DECAY_RATE.get();
-        aggroRetargetInterval = AGGRO_RETARGET_INTERVAL.get();
-        aggroRange = AGGRO_RANGE.get();
+        multishotSpreadPerPoint = MULTISHOT_SPREAD_PER_POINT.get();
     }
 
     private static Set<ResourceLocation> parseResourceLocations(List<? extends String> list) {

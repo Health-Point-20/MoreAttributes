@@ -17,8 +17,7 @@ import java.util.Set;
 
 import static com.fu_meng.more_attributes.AttributesRegistry.*;
 import static com.fu_meng.more_attributes.api.AttributeCalculationHelper.getProbability;
-import static com.fu_meng.more_attributes.handler.AttributesHandler.getExecuteThresholdValue;
-import static com.fu_meng.more_attributes.handler.AttributesHandler.getIncomingDamageCapValue;
+import static com.fu_meng.more_attributes.api.AttributeCalculationHelper.getIncomingDamageCapValue;
 
 import com.fu_meng.more_attributes.api.accessor.AttributeInstanceAccessor;
 
@@ -55,13 +54,6 @@ public abstract class AttributeMapMixin {
             if (attributes.containsKey(maxHealthAttribute)) {
                 double maxHealth = attributes.get(maxHealthAttribute).getValue();
                 cir.setReturnValue((double) getIncomingDamageCapValue(instance, maxHealth));
-            }
-        } else if (pAttribute == EXECUTE_THRESHOLD.get()) {
-            Attribute maxHealthAttribute = Attributes.MAX_HEALTH;
-
-            if (attributes.containsKey(maxHealthAttribute)) {
-                double maxHealth = attributes.get(maxHealthAttribute).getValue();
-                cir.setReturnValue((double) getExecuteThresholdValue(instance, maxHealth));
             }
         }
     }

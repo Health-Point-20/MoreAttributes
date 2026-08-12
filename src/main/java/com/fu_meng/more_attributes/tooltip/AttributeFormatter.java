@@ -57,8 +57,8 @@ public class AttributeFormatter {
     }
 
     /**
-     * 斩杀阈值的 tooltip 格式化，逻辑与伤害上限一致：
-     * ADDITION 显示固定数值，MULTIPLY 显示 (1+amount)×100% 的最大生命值百分比。
+     * 斩杀阈值的 tooltip 格式化：
+     * ADDITION 显示固定数值，MULTIPLY 显示 amount×100% 的最大生命值百分比。
      */
     private static MutableComponent formatExecuteThreshold(double itemValue, String attributeName, AttributeModifier modifier, TooltipFlag flag) {
         MutableComponent comp;
@@ -66,7 +66,7 @@ public class AttributeFormatter {
             String formattedValue = ItemStack.ATTRIBUTE_MODIFIER_FORMAT.format(itemValue);
             comp = Component.literal(attributeName + ": " + formattedValue).withStyle(ChatFormatting.BLUE);
         } else {
-            double percentage = (1 + itemValue) * 100;
+            double percentage = itemValue * 100;
             String formattedValue = ItemStack.ATTRIBUTE_MODIFIER_FORMAT.format(percentage);
             comp = Component.literal(attributeName + ": " + formattedValue + "%").withStyle(ChatFormatting.BLUE);
         }

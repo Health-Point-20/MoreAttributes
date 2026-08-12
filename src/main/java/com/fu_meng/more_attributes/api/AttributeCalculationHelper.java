@@ -191,4 +191,60 @@ public class AttributeCalculationHelper {
 
         return Math.max(0.0, scale);
     }
+
+
+    /**
+     * 计算背刺伤害因子：攻击者加成与受害者抵抗在强度域抵消后返回伤害乘数。
+     * netStrength = victim_resist_strength - attacker_bonus_strength
+     * - netStrength > 0：净减伤，factor = e^(-netStrength) ∈ (0, 1)
+     * - netStrength < 0：净加成，factor = 1 + |netStrength| > 1
+     * - netStrength = 0：factor = 1（完全抵消）
+     */
+    public static float getBackstabDamageFactor(LivingEntity attacker, LivingEntity victim) {
+        double attackerStrength = computeStrength(attacker.getAttribute(BACKSTAB_DAMAGE.get()));
+        double victimStrength = computeStrength(victim.getAttribute(BACKSTAB_RESISTANCE.get()));
+        double netStrength = victimStrength - attackerStrength;
+        return (float) getDamageFactorFromStrength(netStrength);
+    }
+
+    /**
+     * 计算斩杀阈值：取所有修饰符中最宽松的（最大）阈值。
+     * ADDITION 模式为固定值，MULTIPLY_BASE/MULTIPLY_TOTAL 为受害者最大生命值百分比。
+     * 无修饰符时返回 0（不触发斩杀）。
+     */
+    public static float getExecuteThresholdValue(AttributeInstance executeThreshold, double maxHealth) {
+        if (executeThreshold != null) {
+            double maxAddition = 0.0;
+            double maxMultiplication = 0.0;
+            for (AttributeModifier modifier : executeThreshold.getModifiers()) {
+                switch (modifier.getOperation()) {
+                    case ADDITION -> maxAddition = Math.max(maxAddition, modifier.getAmount());
+                    case MULTIPLY_BASE, MULTIPLY_TOTAL ->
+                            maxMultiplication = Math.max(maxMultiplication, modifier.getAmount());
+                }
+            }
+            return (float) Math.max(maxAddition, maxMultiplication * maxHealth);
+        }
+        return 0.0f;
+    }
+
+    public static float getIncomingDamageCapValue(AttributeInstance incomingDamageCap, double maxHealth) {
+        if (incomingDamageCap != null) {
+            double minAddition = Double.MAX_VALUE;
+            double minMultiplication = 1.0;
+
+            // 单次遍历所有修饰符，同时查找加法和乘法中的最小值
+            for (AttributeModifier modifier : incomingDamageCap.getModifiers()) {
+                switch (modifier.getOperation()) {
+                    case ADDITION -> minAddition = Math.min(minAddition, modifier.getAmount());
+                    case MULTIPLY_BASE, MULTIPLY_TOTAL ->
+                            minMultiplication = Math.min(minMultiplication, 1.0 + modifier.getAmount());
+                }
+            }
+
+            return (float) Math.min(minAddition, minMultiplication * maxHealth);
+        }
+        return Float.POSITIVE_INFINITY;
+    }
+
 }

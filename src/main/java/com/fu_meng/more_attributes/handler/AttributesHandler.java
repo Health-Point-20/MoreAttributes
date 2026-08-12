@@ -10,14 +10,8 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.*;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.ExperienceOrb;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.entity.*;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
-import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -27,7 +21,11 @@ import net.minecraft.world.entity.projectile.AbstractArrow;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.item.*;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.fml.ModList;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 import net.minecraftforge.common.ForgeMod;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
@@ -55,12 +53,35 @@ public class AttributesHandler {
     private static final Map<UUID, Long> HURT_RECORD = new ConcurrentHashMap<>();
     // Map<弹射物, 受击者>
     private static final Map<UUID, UUID> PROJECTILE_RECORD = new ConcurrentHashMap<>();
-    // 仇恨表：mobUUID -> (playerUUID -> aggroValue)
-    private static final Map<UUID, Map<UUID, Double>> AGGRO_TABLE = new ConcurrentHashMap<>();
+
+    // 多重射击复制品标记键
+    private static final String MULTISHOT_CLONE_KEY = "more_attributes$multishot_clone";
+
+    private static boolean isMultishotClone(Entity entity) {
+        return entity.getPersistentData().getBoolean(MULTISHOT_CLONE_KEY);
+    }
 
     @SubscribeEvent
     public static void onProjectileImpact(ProjectileImpactEvent event) {
         Projectile projectile = event.getProjectile();
+
+        // 处理多重射击复制品的击中销毁
+        if (isMultishotClone(projectile)) {
+            HitResult hitResult = event.getRayTraceResult();
+            if (hitResult.getType() == HitResult.Type.BLOCK) {
+                // 击中方块：立即销毁，不触发 onHitBlock（防止箭矢插地、三叉戟滞留等）
+                event.setImpactResult(ProjectileImpactEvent.ImpactResult.STOP_AT_CURRENT_NO_DAMAGE);
+            } else if (hitResult.getType() == HitResult.Type.ENTITY) {
+                // 击中实体：允许造成伤害，下一 tick 销毁复制品（防止后续滞留/拾取/忠诚回归等副作用）
+                queueServerWork(() -> {
+                    if (!projectile.isRemoved()) {
+                        projectile.discard();
+                    }
+                });
+            }
+            return;
+        }
+
         LivingEntity victim = event.getEntity() instanceof LivingEntity living ? living : null;
         LivingEntity attacker = projectile.getOwner() instanceof LivingEntity living ? living : null;
 
@@ -74,6 +95,16 @@ public class AttributesHandler {
             }
         } else {
             PROJECTILE_RECORD.put(projectile.getUUID(), victim.getUUID());
+        }
+    }
+
+    @SubscribeEvent
+    public static void onEntityJoin(EntityJoinLevelEvent event) {
+        // 处理箭矢穿透属性
+        if (event.getEntity() instanceof AbstractArrow arrow && arrow.getOwner() instanceof LivingEntity shooter) {
+            if (isMultishotClone(arrow)) return; // 跳过多重射击复制品（已从原弹射物继承属性）
+            double pierceCount = shooter.getAttributeValue(ARROW_PIERCE.get());
+            arrow.setPierceLevel((byte) (arrow.getPierceLevel() + pierceCount));
         }
     }
 
@@ -134,13 +165,19 @@ public class AttributesHandler {
         LivingEntity victim = event.getEntity();
         DamageSource source = event.getSource();
         LivingEntity attacker = source.getEntity() instanceof LivingEntity entity ? entity : null;
-        float amount = event.getAmount();
+        float damage = event.getAmount();
 
         // 处理无敌时间
         double invincibleTimeRate = victim.getAttributeValue(INVINCIBLE_TIME.get());
         if (invincibleTimeRate > 0) {
             victim.invulnerableTime = (int) (victim.invulnerableTime * invincibleTimeRate);
         }
+
+        // 判断伤害源是否属于魔法
+        boolean isMagicDamage = source.typeHolder()
+                .unwrapKey()
+                .map(key -> consideredMagicDamage.contains(key.location()))
+                .orElse(false);
 
         // 处理忽视无敌时间
         if (attacker != null) {
@@ -157,79 +194,81 @@ public class AttributesHandler {
             }
 
             // 处理伤害倍率属性
+            float multiplier;
             double damageMultiplier = attacker.getAttributeValue(DAMAGE_MULTIPLIER.get());
-            amount *= (float) damageMultiplier;
+            multiplier = (float) damageMultiplier;
+            // 魔法伤害倍率
+            if (isMagicDamage) {
+                double magicDamage = attacker.getAttributeValue(MAGIC_DAMAGE_MULTIPLIER.get());
+                multiplier += (float) magicDamage;
+            }
+            damage *= multiplier;
 
             // 处理暴击
             // 开启神化兼容时跳过本模组的暴击处理，交由神化模组使用叠加后的属性值进行暴击判定
-            if (!ApotheosisCritCompatibility) {
+            if (!ApotheosisCritCompatibility || !ModList.get().isLoaded("attributeslib")) {
                 double criticalChance = attacker.getAttributeValue(CRITICAL_CHANCE.get());
                 double criticalDamage = attacker.getAttributeValue(CRITICAL_DAMAGE.get());
 
                 if (attacker.getRandom().nextDouble() <= criticalChance) {
-                    amount *= (float) criticalDamage;
+                    damage *= (float) criticalDamage;
                 }
             }
 
-            double damageReflection =  attacker.getAttributeValue(DAMAGE_REFLECTION.get());
+            // 处理反伤
+            double damageReflection =  victim.getAttributeValue(DAMAGE_REFLECTION.get());
             if (damageReflection > 0) {
                 ResourceKey<DamageType> newSourceKey = source.typeHolder().unwrapKey().orElse(DamageTypes.MOB_ATTACK);
                 DamageSource newSource = getDamageSource(newSourceKey, victim);
-                float newDamage = (float) damageReflection * amount;
+                float newDamage = (float) damageReflection * damage;
 
                 extraHurt(attacker, newSource, newDamage);
             }
 
             // 处理背刺伤害加成/抵抗
-            // 攻击者位于受害者背后半球（点积 > 0）判定为背刺
+            // 攻击者位于受害者背后半球（点积 < 0）判定为背刺
             double distanceSqr = victim.position().distanceToSqr(attacker.position());
             if (distanceSqr > 1.0E-6) {
                 Vec3 look = victim.getLookAngle();
                 Vec3 toAttacker = attacker.position().subtract(victim.position()).normalize();
-                if (look.dot(toAttacker) > 0) {
-                    // BACKSTAB_DAMAGE 为线性加成；BACKSTAB_RESISTANCE 经强度模型返回减伤概率
-                    double backstabBonus = attacker.getAttributeValue(BACKSTAB_DAMAGE.get());
-                    double backstabResist = victim.getAttributeValue(BACKSTAB_RESISTANCE.get());
-                    double net = backstabBonus - backstabResist;
-                    if (net != 0) {
-                        // net >= 0：线性加成；net < 0：强度模型减伤（resist 已是强度域概率）
-                        amount *= (float) (1 + net);
+                if (look.dot(toAttacker) < 0) {
+                    // 背刺加成与抵抗均在强度域计算
+                    float backstabFactor = AttributeCalculationHelper.getBackstabDamageFactor(attacker, victim);
+                    if (backstabFactor != 1.0F) {
+                        damage *= backstabFactor;
                     }
                 }
             }
 
-            // 仇恨值生成：攻击者为玩家、受害者为敌对生物时累加仇恨
-            if (aggroEnabled && victim instanceof Mob mob && attacker instanceof Player player) {
-                double aggroGain = amount * (1 + player.getAttributeValue(AGGRO.get()));
-                AGGRO_TABLE.computeIfAbsent(mob.getUUID(), k -> new java.util.concurrent.ConcurrentHashMap<>())
-                        .merge(player.getUUID(), aggroGain, Double::sum);
+            // 处理近战伤害溅射
+            double meleeSplashRange = attacker.getAttributeValue(MELEE_SPLASH_RANGE.get());
+            double meleeSplashRatio = attacker.getAttributeValue(MELEE_SPLASH_RATIO.get());
+
+            if (meleeSplashRange > 0 && meleeSplashRatio > 0) {
+                meleeSplashRatio = unlimitedSplashDamage ? meleeSplashRatio : Math.min(1, meleeSplashRatio);
+                float splashDamage = (float) (meleeSplashRatio * damage);
+                AABB box = victim.getBoundingBox().inflate(meleeSplashRange);
+
+                attacker.level().getEntitiesOfClass(LivingEntity.class, box, entity ->
+                        entity != attacker && entity != victim && !isPartner(attacker, entity)
+                                && (entity instanceof Enemy || entity.getMobType() == victim.getMobType()))
+                        .forEach(entity -> extraHurt(entity, source, splashDamage));
             }
         }
 
         // 物理伤害减免
         if (!source.is(DamageTypeTags.BYPASSES_ARMOR)) {
-            amount *= (float) AttributeCalculationHelper.getPhysicalDamageFactor(victim);
+            damage *= (float) AttributeCalculationHelper.getPhysicalDamageFactor(victim);
         }
 
-        // 判断伤害源是否属于魔法
-        boolean isMagicDamage = source.typeHolder()
-                .unwrapKey()
-                .map(key -> consideredMagicDamage.contains(key.location()))
-                .orElse(false);
-
         if (isMagicDamage) {
-            if (attacker != null ){
-                double magicDamage = attacker.getAttributeValue(MAGIC_DAMAGE_MULTIPLIER.get());
-                amount *= (float) magicDamage;
-            }
-
             // 魔法伤害减免
-            amount *= (float) AttributeCalculationHelper.getMagicDamageFactor(victim);
+            damage *= (float) AttributeCalculationHelper.getMagicDamageFactor(victim);
 
             // 通过护甲减伤规则进行计算
             double magicArmor = victim.getAttributeValue(MAGIC_ARMOR.get());
             double magicArmorToughness = victim.getAttributeValue(MAGIC_ARMOR_TOUGHNESS.get());
-            amount = CombatRules.getDamageAfterAbsorb(amount, (float) magicArmor, (float) magicArmorToughness);
+            damage = CombatRules.getDamageAfterAbsorb(damage, (float) magicArmor, (float) magicArmorToughness);
         }
 
         // 环境伤害减免
@@ -251,23 +290,40 @@ public class AttributesHandler {
                 || source.is(DamageTypes.OUTSIDE_BORDER);
 
         if (isEnvironmental && source.getEntity() == null) {
-            amount *= (float) AttributeCalculationHelper.getEnvironmentalDamageFactor(victim);
+            damage *= (float) AttributeCalculationHelper.getEnvironmentalDamageFactor(victim);
         }
 
         // 全伤害减免
-        amount *= (float) AttributeCalculationHelper.getAllDamageFactor(victim);
+        damage *= (float) AttributeCalculationHelper.getAllDamageFactor(victim);
 
-        event.setAmount(amount);
+        // 应用修改后的伤害
+        event.setAmount(damage);
 
         // 伤害转化前的伤害记录
         if (attacker != null && !isOnDealExtraDamage()) {
             double trueDamageRatio = attacker.getAttributeValue(TRUE_DAMAGE_RATIO.get());
             double magicDamageRatio = attacker.getAttributeValue(MAGIC_DAMAGE_RATIO.get());
             if (trueDamageRatio > 0 || magicDamageRatio > 0) {
-                float damageRecord = Math.max(DAMAGE_RECORD.getOrDefault(attacker.getUUID(), 0f), amount);
+                float damageRecord = Math.max(DAMAGE_RECORD.getOrDefault(attacker.getUUID(), 0f), damage);
                 DAMAGE_RECORD.put(attacker.getUUID(), damageRecord);
             }
         }
+    }
+
+    private static boolean isPartner(LivingEntity entity, LivingEntity target) {
+        // 判断是否有主仆关系
+        if (entity instanceof OwnableEntity ownable && ownable.getOwner() == target
+                || target instanceof OwnableEntity ownableTarget && ownableTarget.getOwner() == entity) {
+            return true;
+        }
+
+        // 团队关系
+        if (target.getTeam() != null && target.getTeam().isAlliedTo(entity.getTeam())) {
+            return true;
+        }
+
+        // 种族关系
+        return entity.getType() == target.getType();
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
@@ -278,22 +334,25 @@ public class AttributesHandler {
         double maxHealth = victim.getAttributeValue(Attributes.MAX_HEALTH);
         float damage = event.getAmount();
 
-        float incomingDamageCapValue = getIncomingDamageCapValue(incomingDamageCap, maxHealth);
+        float incomingDamageCapValue = AttributeCalculationHelper.getIncomingDamageCapValue(incomingDamageCap, maxHealth);
         if (damage > incomingDamageCapValue) {
             event.setAmount(incomingDamageCapValue);
         }
 
-        // 处理斩杀阈值：受害者当前血量低于阈值时直接处决（对所有生物生效）
-        double executeThreshold = victim.getAttributeValue(EXECUTE_THRESHOLD.get());
-        if (executeThreshold >= 0 && victim.getHealth() > 0 && victim.getHealth() <= executeThreshold) {
-            DamageSource executeSource = event.getSource();
-            victim.setHealth(0.0F);
-            victim.die(executeSource);
-            if (attacker instanceof Player player) {
-                player.displayClientMessage(Component.translatable("more_attributes.execute_triggered"), true);
+        // 处理斩杀阈值：攻击者的斩杀阈值属性，受害者当前血量低于阈值时直接处决（对所有生物生效）
+        if (attacker != null) {
+            AttributeInstance executeThresholdAttr = attacker.getAttribute(EXECUTE_THRESHOLD.get());
+            double executeThreshold = AttributeCalculationHelper.getExecuteThresholdValue(executeThresholdAttr, maxHealth);
+            if (executeThreshold > 0 && victim.getHealth() > 0 && victim.getHealth() <= executeThreshold) {
+                DamageSource executeSource = event.getSource();
+                victim.setHealth(0.0F);
+                victim.die(executeSource);
+                if (attacker instanceof Player player) {
+                    player.displayClientMessage(Component.translatable("more_attributes.execute_triggered"), true);
+                }
+                event.setCanceled(true);
+                return;
             }
-            event.setCanceled(true);
-            return;
         }
 
 
@@ -431,46 +490,6 @@ public class AttributesHandler {
         }
     }
 
-    public static float getIncomingDamageCapValue(AttributeInstance incomingDamageCap, double maxHealth) {
-        if (incomingDamageCap != null) {
-            double minAddition = Double.MAX_VALUE;
-            double minMultiplication = 1.0;
-
-            // 单次遍历所有修饰符，同时查找加法和乘法中的最小值
-            for (AttributeModifier modifier : incomingDamageCap.getModifiers()) {
-                switch (modifier.getOperation()) {
-                    case ADDITION -> minAddition = Math.min(minAddition, modifier.getAmount());
-                    case MULTIPLY_BASE, MULTIPLY_TOTAL ->
-                            minMultiplication = Math.min(minMultiplication, 1.0 + modifier.getAmount());
-                }
-            }
-
-            return (float) Math.min(minAddition, minMultiplication * maxHealth);
-        }
-        return Float.POSITIVE_INFINITY;
-    }
-
-    /**
-     * 计算斩杀阈值：取所有修饰符中最宽松的（最大）阈值。
-     * ADDITION 模式为固定值，MULTIPLY_BASE/MULTIPLY_TOTAL 为最大生命值百分比。
-     * 无修饰符时返回 -1（永不斩杀）。
-     */
-    public static float getExecuteThresholdValue(AttributeInstance executeThreshold, double maxHealth) {
-        if (executeThreshold != null) {
-            double maxAddition = -1.0;
-            double maxMultiplication = 0.0;
-            for (AttributeModifier modifier : executeThreshold.getModifiers()) {
-                switch (modifier.getOperation()) {
-                    case ADDITION -> maxAddition = Math.max(maxAddition, modifier.getAmount());
-                    case MULTIPLY_BASE, MULTIPLY_TOTAL ->
-                            maxMultiplication = Math.max(maxMultiplication, 1.0 + modifier.getAmount());
-                }
-            }
-            return (float) Math.max(maxAddition, maxMultiplication * maxHealth);
-        }
-        return -1.0f;
-    }
-
     @SubscribeEvent
     public static void onLivingHeal(LivingHealEvent event) {
         LivingEntity living = event.getEntity();
@@ -489,59 +508,26 @@ public class AttributesHandler {
     }
 
     @SubscribeEvent
-    public static void onMobDeath(LivingDeathEvent event) {
-        // 怪物死亡时清除其仇恨条目
-        AGGRO_TABLE.remove(event.getEntity().getUUID());
-    }
-
-    @SubscribeEvent
-    public static void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) {
-        // 玩家重生时清除其在所有怪物仇恨表中的条目
-        removePlayerFromAggroTable(event.getEntity().getUUID());
-    }
-
-    @SubscribeEvent
-    public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
-        // 玩家退出时清除其在所有怪物仇恨表中的条目
-        removePlayerFromAggroTable(event.getEntity().getUUID());
-    }
-
-    private static void removePlayerFromAggroTable(UUID playerUUID) {
-        for (Map<UUID, Double> entries : AGGRO_TABLE.values()) {
-            entries.remove(playerUUID);
-        }
-    }
-
-    @SubscribeEvent
     public static void onLivingChangeTarget(LivingChangeTargetEvent event) {
         if (!aggroEnabled) return;
-        // 仅拦截敌对生物将目标切换为玩家的情况
         if (!(event.getEntity() instanceof Mob mob) || !(mob instanceof Enemy)) return;
         if (!(event.getNewTarget() instanceof Player originalTarget)) return;
 
-        Map<UUID, Double> aggroEntries = AGGRO_TABLE.get(mob.getUUID());
-        if (aggroEntries == null || aggroEntries.isEmpty()) return;
+        double range = mob.getAttributeValue(Attributes.FOLLOW_RANGE);
+        double rangeSqr = range * range;
 
-        // 在 follow_range 范围内寻找仇恨值最高的玩家
-        double followRange = mob.getAttributeValue(Attributes.FOLLOW_RANGE);
-        AABB searchBox = mob.getBoundingBox().inflate(followRange);
-        List<Player> nearbyPlayers = mob.level().getEntitiesOfClass(Player.class, searchBox);
+        // 在追踪范围内搜索仇恨值（AGGRO属性值）最高的可攻击玩家
+        Player highestAggroPlayer = mob.level().players().stream()
+                .filter(p -> p.distanceToSqr(mob) < rangeSqr && p.isAlive() && !p.isSpectator() && !p.isCreative())
+                .max(Comparator.comparingDouble(p -> p.getAttributeValue(AGGRO.get())))
+                .orElse(null);
 
-        UUID highestUUID = null;
-        double highestAggro = 0;
-        for (Player p : nearbyPlayers) {
-            if (!p.isAlive() || p.isSpectator()) continue;
-            double aggro = aggroEntries.getOrDefault(p.getUUID(), 0.0);
-            if (aggro > highestAggro) {
-                highestAggro = aggro;
-                highestUUID = p.getUUID();
-            }
-        }
-
-        if (highestUUID != null && !highestUUID.equals(originalTarget.getUUID())) {
-            Player newTarget = mob.level().getPlayerByUUID(highestUUID);
-            if (newTarget != null && newTarget.isAlive()) {
-                event.setNewTarget(newTarget);
+        // 仅当候选玩家仇恨值严格大于当前目标时才切换
+        if (highestAggroPlayer != null && highestAggroPlayer != originalTarget) {
+            double originalAggro = originalTarget.getAttributeValue(AGGRO.get());
+            double highestAggro = highestAggroPlayer.getAttributeValue(AGGRO.get());
+            if (originalAggro < highestAggro) {
+                event.setNewTarget(highestAggroPlayer);
             }
         }
     }
@@ -577,29 +563,6 @@ public class AttributesHandler {
                     );
                     orb.move(MoverType.SELF, orb.getDeltaMovement());
                 });
-            }
-
-            // 仇恨值被动嘲讽（config 开关，默认关）
-            if (aggroEnabled && aggroPassiveTaunt && player.tickCount % 20 == 0) {
-                double aggroAttr = player.getAttributeValue(AGGRO.get());
-                if (aggroAttr > 0) {
-                    AABB tauntBox = player.getBoundingBox().inflate(aggroRange);
-                    List<Mob> nearbyMobs = player.level().getEntitiesOfClass(Mob.class, tauntBox);
-                    for (Mob mob : nearbyMobs) {
-                        AGGRO_TABLE.computeIfAbsent(mob.getUUID(), k -> new java.util.concurrent.ConcurrentHashMap<>())
-                                .merge(player.getUUID(), aggroAttr * 0.1, Double::sum);
-                    }
-                }
-            }
-        }
-
-        // 仇恨值衰减（仅服务端、仅Mob）
-        if (aggroEnabled && living instanceof Mob mob && !living.level().isClientSide && mob.tickCount % aggroRetargetInterval == 0) {
-            Map<UUID, Double> aggroEntries = AGGRO_TABLE.get(mob.getUUID());
-            if (aggroEntries != null && !aggroEntries.isEmpty()) {
-                double decay = 1.0 - aggroDecayRate;
-                aggroEntries.replaceAll((k, v) -> v * decay);
-                aggroEntries.values().removeIf(v -> v < 0.1);
             }
         }
     }
@@ -674,12 +637,83 @@ public class AttributesHandler {
     @SubscribeEvent
     public static void onEntityJoinWorld(EntityJoinLevelEvent event) {
         if (event.getEntity() instanceof AbstractArrow arrow) {
+            if (isMultishotClone(arrow)) return; // 跳过多重射击复制品
             if (arrow.getOwner() instanceof LivingEntity living) {
                 double arrowDamage = living.getAttributeValue(ARROW_DAMAGE.get());
                 double arrowVelocity = living.getAttributeValue(ARROW_VELOCITY.get());
                 arrow.setBaseDamage(arrow.getBaseDamage() * arrowDamage);
                 arrow.setDeltaMovement(arrow.getDeltaMovement().scale(arrowVelocity));
             }
+        }
+    }
+
+    /**
+     * 多重射击：弹射物加入世界时，根据发射者的 MULTISHOT_AMOUNT 属性克隆额外弹射物。
+     * 使用 LOW 优先级确保在 ARROW_DAMAGE/VELOCITY/PIERCE 等属性处理之后执行，
+     * 使复制品能从已修改的原弹射物状态继承正确数值。
+     */
+    @SubscribeEvent(priority = EventPriority.LOW)
+    public static void onMultishotProjectileJoin(EntityJoinLevelEvent event) {
+        if (event.getLevel().isClientSide()) return;
+        if (!(event.getEntity() instanceof Projectile projectile)) return;
+        if (isMultishotClone(projectile)) return;
+
+        Entity owner = projectile.getOwner();
+        if (!(owner instanceof LivingEntity shooter)) return;
+
+        double multishotAmount = shooter.getAttributeValue(MULTISHOT_AMOUNT.get());
+        int extraCount = (int) multishotAmount;
+        if (extraCount <= 0) return;
+
+        spawnMultishotClones(projectile, shooter, extraCount);
+    }
+
+    /**
+     * 以扇形分布克隆额外弹射物。
+     * 采用交替左右分布：i=0→左侧第1档，i=1→右侧第1档，i=2→左侧第2档，依此类推。
+     * 每档间隔 multishotSpreadPerPoint 度（默认10°，与原版弩多重射击一致）。
+     * 方向旋转使用四元数绕发射者上方向轴，与原版 CrossbowItem 实现一致。
+     */
+    private static void spawnMultishotClones(Projectile original, LivingEntity shooter, int extraCount) {
+        Vec3 originalMotion = original.getDeltaMovement();
+        double speed = originalMotion.length();
+        if (speed < 1.0E-6) return;
+
+        Vec3 dir = originalMotion.normalize();
+        Vec3 up = shooter.getUpVector(1.0F);
+
+        for (int i = 0; i < extraCount; i++) {
+            int side = (i % 2 == 0) ? -1 : 1;
+            int step = i / 2 + 1;
+            float angleDeg = side * step * (float) multishotSpreadPerPoint;
+            float angleRad = angleDeg * ((float) Math.PI / 180.0F);
+
+            // 通过 NBT 序列化/反序列化创建同类型弹射物副本，兼容模组弹射物
+            CompoundTag nbt = original.saveWithoutId(new CompoundTag());
+            nbt.remove("UUID"); // 移除 UUID 以避免冲突，create() 会分配新 UUID
+            Entity cloneEntity = original.getType().create(original.level());
+            if (!(cloneEntity instanceof Projectile cloneProjectile)) continue;
+            cloneEntity.load(nbt);
+
+            // 标记为复制品
+            cloneEntity.getPersistentData().putBoolean(MULTISHOT_CLONE_KEY, true);
+
+            // 确保所有者正确
+            cloneProjectile.setOwner(shooter);
+
+            // 用四元数绕上方向轴旋转原始方向向量，实现扇形分布
+            Quaternionf quaternion = new Quaternionf().setAngleAxis(angleRad, (float) up.x, (float) up.y, (float) up.z);
+            Vector3f rotated = dir.toVector3f().rotate(quaternion);
+
+            // 设置克隆体的方向和速度（inaccuracy=0 保证精确角度，无随机偏移）
+            cloneProjectile.shoot(rotated.x(), rotated.y(), rotated.z(), (float) speed, 0.0F);
+
+            // 箭矢类复制品标记为仅创造模式可拾取，防止刷箭
+            if (cloneEntity instanceof AbstractArrow cloneArrow) {
+                cloneArrow.pickup = AbstractArrow.Pickup.CREATIVE_ONLY;
+            }
+
+            original.level().addFreshEntity(cloneEntity);
         }
     }
 
