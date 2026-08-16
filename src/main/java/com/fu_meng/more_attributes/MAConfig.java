@@ -19,6 +19,7 @@ public class MAConfig {
     static final ForgeConfigSpec SPEC;
 
     public static final ForgeConfigSpec.BooleanValue HUNGER_RATE_AFFECT_REGENERATION;
+    public static final ForgeConfigSpec.BooleanValue REGEN_PER_TICK;
     public static final ForgeConfigSpec.BooleanValue STRONGER_TRUE_DAMAGE;
     public static final ForgeConfigSpec.BooleanValue UNLIMITED_LIFE_STEAL;
     public static final ForgeConfigSpec.BooleanValue UNLIMITED_SPLASH_DAMAGE;
@@ -31,8 +32,15 @@ public class MAConfig {
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> CONSIDERED_MAGIC_DAMAGE;
     public static final ForgeConfigSpec.BooleanValue AGGRO_ENABLED;
     public static final ForgeConfigSpec.DoubleValue MULTISHOT_SPREAD_PER_POINT;
+    public static final ForgeConfigSpec.BooleanValue HEALTH_DAMAGE_PLAYER_ONLY;
+    public static final ForgeConfigSpec.BooleanValue HEALTH_DAMAGE_ONCE_PER_TICK;
+    public static final ForgeConfigSpec.DoubleValue DAMAGE_SHARING_RANGE;
+    public static final ForgeConfigSpec.DoubleValue DAMAGE_SHARING_DEFAULT_WEIGHT;
+    public static final ForgeConfigSpec.DoubleValue ARROW_BOUNCE_SEARCH_RANGE;
+    public static final ForgeConfigSpec.DoubleValue ARROW_BOUNCE_DAMAGE_FALLOFF;
 
     public static boolean hungerRateAffectRegeneration;
+    public static boolean regenPerTick;
     public static boolean strongerTrueDamage;
     public static boolean unlimitedLifeSteal;
     public static boolean unlimitedSplashDamage;
@@ -45,10 +53,17 @@ public class MAConfig {
     public static Set<ResourceLocation> consideredMagicDamage;
     public static boolean aggroEnabled;
     public static double multishotSpreadPerPoint;
+    public static boolean healthDamagePlayerOnly;
+    public static boolean healthDamageOncePerTick;
+    public static double damageSharingRange;
+    public static double damageSharingDefaultWeight;
+    public static double arrowBounceSearchRange;
+    public static double arrowBounceDamageFalloff;
 
     static {
         BUILDER.push("More Attributes Config");
         HUNGER_RATE_AFFECT_REGENERATION = BUILDER.comment("Whether hunger rate affects regeneration rate.").comment("饥饿速率是否影响回血时的消耗").define("hungerRateAffectRegeneration", false);
+        REGEN_PER_TICK = BUILDER.comment("When true, the regeneration attribute heals 1/20 of its value every tick (smoothed across the second, current default behavior). When false, the full attribute value is healed once per second (in a single burst every 20 ticks).").comment("再生属性回血模式。true时每tick恢复属性值的1/20（平摊到整秒，即当前默认行为）；false时每秒按完整属性值集中恢复一次（每20tick触发一次）").define("regenPerTick", true);
         STRONGER_TRUE_DAMAGE = BUILDER.comment("Whether stronger true damage.").comment("是否启用更强硬的真伤").define("strongerTrueDamage", false);
         UNLIMITED_LIFE_STEAL = BUILDER.comment("Can life-steal absorb more health points than causing damage?").comment("生命窃取能否吸取比造成伤害更多的血量").define("unlimitedLiftSteal", false);
         UNLIMITED_SPLASH_DAMAGE = BUILDER.comment("Can melee splash damage more than causing damage?").comment("近战伤害溅射能溅射比造成伤害更高的伤害").define("unlimitedSplashDamage", false);
@@ -77,6 +92,14 @@ public class MAConfig {
 
         MULTISHOT_SPREAD_PER_POINT = BUILDER.comment("Spread angle per multishot point in degrees. Total spread grows with the attribute value.").comment("每点多重射击属性的散布角度（度），总散布角度随属性值增长").defineInRange("multishotSpreadPerPoint", 5.0, 0.1, 180.0);
 
+        HEALTH_DAMAGE_PLAYER_ONLY = BUILDER.comment("Whether health-based damage bonus (max health damage / current health damage) is only triggered by the player's direct melee attacks.").comment("是否仅玩家直接攻击（近战）才能触发生命值相关伤害提升（最大生命值伤害与当前生命值伤害）").define("healthDamagePlayerOnly", false);
+        HEALTH_DAMAGE_ONCE_PER_TICK = BUILDER.comment("Whether each attacker can only trigger health-based damage bonus once per tick.").comment("每tick每个攻击者仅能触发一次生命值相关的伤害提升").define("healthDamageOncePerTick", false);
+
+        DAMAGE_SHARING_RANGE = BUILDER.comment("Search radius (in blocks) for allies when sharing damage via the damage_sharing attribute.").comment("伤害分摊属性生效时搜索友方的半径（方块距离）").defineInRange("damageSharingRange", 16.0, 0.0, 1024.0);
+        DAMAGE_SHARING_DEFAULT_WEIGHT = BUILDER.comment("Default weight added to every participant's damage sharing weight. Guarantees the victim always retains a non-zero share.").comment("每个分摊参与者的默认权重（加到属性值上），保证受害者始终保留非零份额").defineInRange("damageSharingDefaultWeight", 1.0, 0.0, Double.MAX_VALUE);
+        ARROW_BOUNCE_SEARCH_RANGE = BUILDER.comment("Search radius (in blocks) for the next target when an arrow bounces.").comment("箭矢弹射时搜索下一个目标的半径（方块距离）").defineInRange("arrowBounceSearchRange", 16.0, 0.0, 1024.0);
+        ARROW_BOUNCE_DAMAGE_FALLOFF = BUILDER.comment("Damage multiplier applied per arrow bounce (0.8 = each bounce deals 80% of previous damage).").comment("每次箭矢弹射的伤害衰减系数（0.8 = 每次弹射造成上一次80%的伤害）").defineInRange("arrowBounceDamageFalloff", 0.8, 0.0, 1.0);
+
         BUILDER.pop();
         SPEC = BUILDER.build();
     }
@@ -89,6 +112,7 @@ public class MAConfig {
     @SubscribeEvent
     static void onLoad(final ModConfigEvent event) {
         hungerRateAffectRegeneration = HUNGER_RATE_AFFECT_REGENERATION.get();
+        regenPerTick = REGEN_PER_TICK.get();
         strongerTrueDamage = STRONGER_TRUE_DAMAGE.get();
         unlimitedSplashDamage = UNLIMITED_SPLASH_DAMAGE.get();
         unlimitedLifeSteal = UNLIMITED_LIFE_STEAL.get();
@@ -101,6 +125,12 @@ public class MAConfig {
         consideredMagicDamage = parseResourceLocations(CONSIDERED_MAGIC_DAMAGE.get());
         aggroEnabled = AGGRO_ENABLED.get();
         multishotSpreadPerPoint = MULTISHOT_SPREAD_PER_POINT.get();
+        healthDamagePlayerOnly = HEALTH_DAMAGE_PLAYER_ONLY.get();
+        healthDamageOncePerTick = HEALTH_DAMAGE_ONCE_PER_TICK.get();
+        damageSharingRange = DAMAGE_SHARING_RANGE.get();
+        damageSharingDefaultWeight = DAMAGE_SHARING_DEFAULT_WEIGHT.get();
+        arrowBounceSearchRange = ARROW_BOUNCE_SEARCH_RANGE.get();
+        arrowBounceDamageFalloff = ARROW_BOUNCE_DAMAGE_FALLOFF.get();
     }
 
     private static Set<ResourceLocation> parseResourceLocations(List<? extends String> list) {

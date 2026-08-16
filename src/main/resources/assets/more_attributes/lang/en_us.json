@@ -52,5 +52,13 @@
   "attribute.more_attributes.multishot_amount": "Multishot Amount",
   "attribute.more_attributes.melee_splash_range": "Melee Splash Range",
   "attribute.more_attributes.melee_splash_ratio": "Melee Splash Ratio",
-  "attribute.more_attributes.arrow_pierce": "Arrow Pierce"
+  "attribute.more_attributes.arrow_pierce": "Arrow Pierce",
+  "attribute.more_attributes.arrow_accuracy": "Arrow Accuracy",
+  "attribute.more_attributes.max_health_damage": "Target Max Health Damage",
+  "attribute.more_attributes.current_health_damage": "Target Current Health Damage",
+  "attribute.more_attributes.lost_health_damage": "Lost Health Damage",
+  "attribute.more_attributes.self_max_health_damage": "Self Max Health Damage",
+  "attribute.more_attributes.damage_sharing": "Damage Sharing",
+  "attribute.more_attributes.arrow_bounce": "Arrow Bounce",
+  "attribute.more_attributes.hurt_recovery": "Hurt Recovery"
 }

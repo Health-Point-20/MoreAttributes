@@ -1,7 +1,6 @@
 {
   "more_attributes.hit_miss": "你的攻击被 %s 闪避了",
   "more_attributes.execute_triggered": "§c处决！",
-
   "attribute.modifier.potency": "效力",
   "attribute.more_attributes.incoming_damage_cap": "受到伤害上限",
   "attribute.more_attributes.evasion": "闪避率",
@@ -52,5 +51,13 @@
   "attribute.more_attributes.multishot_amount": "多重射击",
   "attribute.more_attributes.melee_splash_range": "近战溅射半径",
   "attribute.more_attributes.melee_splash_ratio": "近战溅射比例",
-  "attribute.more_attributes.arrow_pierce": "箭矢穿透"
+  "attribute.more_attributes.arrow_pierce": "箭矢穿透",
+  "attribute.more_attributes.arrow_accuracy": "箭矢精准度",
+  "attribute.more_attributes.max_health_damage": "目标最大生命值伤害",
+  "attribute.more_attributes.current_health_damage": "目标当前生命值伤害",
+  "attribute.more_attributes.lost_health_damage": "已损失生命值伤害",
+  "attribute.more_attributes.self_max_health_damage": "自身最大生命值伤害",
+  "attribute.more_attributes.damage_sharing": "伤害分摊",
+  "attribute.more_attributes.arrow_bounce": "箭矢弹射",
+  "attribute.more_attributes.hurt_recovery": "受击恢复"
 }

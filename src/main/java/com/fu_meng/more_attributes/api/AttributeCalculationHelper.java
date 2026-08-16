@@ -9,6 +9,7 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 
 import static com.fu_meng.more_attributes.AttributesRegistry.*;
+import static com.fu_meng.more_attributes.MAConfig.*;
 
 public class AttributeCalculationHelper {
 
@@ -192,6 +193,30 @@ public class AttributeCalculationHelper {
         return Math.max(0.0, scale);
     }
 
+    public static float getHurtRecoveryAmount(LivingEntity entity) {
+        AttributeInstance instance = entity.getAttribute(HURT_RECOVERY.get());
+        float maxHealth = entity.getMaxHealth();
+        if (instance == null) return 0f;
+
+        double sum = 0.0;
+
+        double base = instance.getBaseValue();
+        sum += base;
+
+        for (AttributeModifier modifier : instance.getModifiers()) {
+            double amount = modifier.getAmount();
+            switch (modifier.getOperation()) {
+                case ADDITION:
+                    sum += amount;
+                    break;
+                case MULTIPLY_BASE, MULTIPLY_TOTAL:
+                    sum += amount * maxHealth;
+                    break;
+            }
+        }
+
+        return (float)Math.max(0, sum);
+    }
 
     /**
      * 计算背刺伤害因子：攻击者加成与受害者抵抗在强度域抵消后返回伤害乘数。
@@ -245,6 +270,41 @@ public class AttributeCalculationHelper {
             return (float) Math.min(minAddition, minMultiplication * maxHealth);
         }
         return Float.POSITIVE_INFINITY;
+    }
+
+    /**
+     * 计算基于生命值的额外伤害，聚合四个属性：
+     * - 最大生命值伤害（基于受害者最大生命值）
+     * - 当前生命值伤害（基于受害者当前生命值）
+     * - 已损失生命值伤害（基于受害者已损失生命值，斩杀递增方向）
+     * - 自身最大生命值伤害（基于攻击者自身最大生命值，Tank/肉搏流增伤）
+     * 属性值视为对应生命值的比例（如 0.5 = 50% 生命值的额外伤害）。
+     */
+    public static float getHealthBasedDamageBonus(LivingEntity attacker, LivingEntity victim) {
+        double maxHealthRatio = getRawAttributeValue(attacker, MAX_HEALTH_DAMAGE.get());
+        double currentHealthRatio = getRawAttributeValue(attacker, CURRENT_HEALTH_DAMAGE.get());
+        double lostHealthRatio = getRawAttributeValue(attacker, LOST_HEALTH_DAMAGE.get());
+        double selfMaxHealthRatio = getRawAttributeValue(attacker, SELF_MAX_HEALTH_DAMAGE.get());
+        if (maxHealthRatio <= 0.0 && currentHealthRatio <= 0.0 && lostHealthRatio <= 0.0 && selfMaxHealthRatio <= 0.0)
+            return 0.0f;
+
+        double victimMaxHealth = victim.getMaxHealth();
+        double lostHealth = Math.max(0.0, victimMaxHealth - victim.getHealth());
+        double bonus = maxHealthRatio * victimMaxHealth
+                + currentHealthRatio * victim.getHealth()
+                + lostHealthRatio * lostHealth
+                + selfMaxHealthRatio * attacker.getMaxHealth();
+        return (float) Math.max(0.0, bonus);
+    }
+
+    /**
+     * 计算实体在伤害分摊中的权重：
+     * 权重 = max(实体伤害分摊属性值, 0) + 默认权重。
+     * 默认权重的加法保证受害者始终保留非零份额，即「几乎不会完全将伤害分摊出去」。
+     */
+    public static double getDamageSharingWeight(LivingEntity entity) {
+        double attrValue = getRawAttributeValue(entity, DAMAGE_SHARING.get());
+        return Math.max(0.0, attrValue) + damageSharingDefaultWeight;
     }
 
 }

@@ -93,7 +93,7 @@ public class AttributeFormatter {
             OXYGEN_CONSUMPTION_RATE.get(), SCALE.get(),
             BACKSTAB_DAMAGE.get(), BACKSTAB_RESISTANCE.get(),
             CLIMBING_SPEED.get(), EXPERIENCE_GAIN_RATIO.get(),
-            AGGRO.get()
+            MAX_HEALTH_DAMAGE.get(), CURRENT_HEALTH_DAMAGE.get()
     );
 
     public static boolean isPercentageAttribute(Attribute attribute) {

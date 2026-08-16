@@ -173,6 +173,30 @@ public class AttributesRegistry {
     public static final RegistryObject<Attribute> ARROW_PIERCE = ATTRIBUTES.register("arrow_pierce",
             () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".arrow_pierce", 0.0, 0.0, MAX).setSyncable(true));
 
+    public static final RegistryObject<Attribute> ARROW_ACCURACY = ATTRIBUTES.register("arrow_accuracy",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".arrow_accuracy", 0.0, MIN, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> HURT_RECOVERY = ATTRIBUTES.register("hurt_recovery",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".hurt_recovery", 0.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> MAX_HEALTH_DAMAGE = ATTRIBUTES.register("max_health_damage",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".max_health_damage", 0.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> CURRENT_HEALTH_DAMAGE = ATTRIBUTES.register("current_health_damage",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".current_health_damage", 0.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> LOST_HEALTH_DAMAGE = ATTRIBUTES.register("lost_health_damage",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".lost_health_damage", 0.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> SELF_MAX_HEALTH_DAMAGE = ATTRIBUTES.register("self_max_health_damage",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".self_max_health_damage", 0.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> DAMAGE_SHARING = ATTRIBUTES.register("damage_sharing",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".damage_sharing", 0.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> ARROW_BOUNCE = ATTRIBUTES.register("arrow_bounce",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".arrow_bounce", 0.0, 0.0, MAX).setSyncable(true));
+
     @SubscribeEvent
     public static void addAttributes(EntityAttributeModificationEvent event) {
         List<RegistryObject<Attribute>> attributesForLiving = Arrays.asList(
@@ -217,7 +241,15 @@ public class AttributesRegistry {
                 MELEE_SPLASH_RANGE,
                 MELEE_SPLASH_RATIO,
                 ARROW_PIERCE,
-                MULTISHOT_AMOUNT
+                ARROW_ACCURACY,
+                MULTISHOT_AMOUNT,
+                HURT_RECOVERY,
+                MAX_HEALTH_DAMAGE,
+                CURRENT_HEALTH_DAMAGE,
+                LOST_HEALTH_DAMAGE,
+                SELF_MAX_HEALTH_DAMAGE,
+                DAMAGE_SHARING,
+                ARROW_BOUNCE
         );
 
         List<RegistryObject<Attribute>> attributesForPlayer = Arrays.asList(
