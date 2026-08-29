@@ -14,6 +14,8 @@ import static com.fu_meng.more_attributes.MAConfig.*;
 public class AttributeCalculationHelper {
 
     private static final Map<AttributeInstance, Double> strengthCache = new IdentityHashMap<>();
+    // 减伤类属性缓存：[0] = 正向强度, [1] = 负向属性值和(≤0), [2] = 乘数修饰
+    private static final Map<AttributeInstance, double[]> damageReductionCache = new IdentityHashMap<>();
 
     // ================= 基础：获取属性的线性累加值 =================
     public static double getRawAttributeValue(LivingEntity entity, Attribute attribute) {
@@ -49,6 +51,7 @@ public class AttributeCalculationHelper {
      */
     public static void clearStrengthCache() {
         strengthCache.clear();
+        damageReductionCache.clear();
     }
 
     private static double computeStrength(AttributeInstance instance) {
@@ -57,6 +60,12 @@ public class AttributeCalculationHelper {
     }
 
     private static double computeStrengthUncached(AttributeInstance instance) {
+        // 被禁用的属性：忽略基础值与所有修饰符，等同属性不存在（默认值进入强度域）
+        Attribute attr = instance.getAttribute();
+        if (isAttributeDisabled(attr)) {
+            return probabilityToStrength(attr.getDefaultValue());
+        }
+
         double strength = 0.0;
         double multiplyBase = 1.0;
         double multiplyTotal = 1.0;
@@ -112,36 +121,97 @@ public class AttributeCalculationHelper {
         return Math.max(0.0, Math.min(1.0, probability));
     }
 
-    // ================= 减伤类  =================
-    private static double getDamageFactorFromStrength(double strength) {
-        if (Double.isInfinite(strength)) {
-            // 正无穷 = 绝对减伤(0伤害)；负无穷 = 无限易伤(无限大伤害)
-            return strength > 0 ? 0.0 : Double.POSITIVE_INFINITY;
+    // ================= 减伤类 =================
+    // 伤害减免类属性（物理/魔法/环境/全伤害）采用正负分离模型：
+    // - 正值（减免）：走强度模型叠加，多个减免按 e^(-s) 相乘，收敛于 0（绝对免疫）
+    // - 负值（易伤）：在属性值域线性叠加，factor = 1 + Σ|p|，无悬崖、无上限
+    // - 正负两部分独立计算后相乘，互不抵消
+    private static double[] computeDamageReductionUncached(AttributeInstance instance) {
+        Attribute attr = instance.getAttribute();
+        if (isAttributeDisabled(attr)) {
+            // 被禁用的属性：忽略基础值与所有修饰符，等同属性不存在（默认值进入对应域）
+            double def = attr.getDefaultValue();
+            return def >= 0
+                    ? new double[]{probabilityToStrength(def), 0.0, 1.0}
+                    : new double[]{0.0, def, 1.0};
         }
 
-        if (strength < 0) {
-            double absStrength = Math.abs(strength);
-            return 1.0 + absStrength;
+        double positiveStrength = 0.0;
+        double negativeSum = 0.0;
+        double multiplyBase = 1.0;
+        double multiplyTotal = 1.0;
+
+        double base = instance.getBaseValue();
+        if (base >= 0) {
+            positiveStrength += probabilityToStrength(base);
+        } else {
+            negativeSum += base;
         }
 
-        // 返回实际受伤比例
-        return Math.exp(-strength);
+        for (AttributeModifier modifier : instance.getModifiers()) {
+            double amount = modifier.getAmount();
+            switch (modifier.getOperation()) {
+                case ADDITION -> {
+                    if (amount >= 0) {
+                        positiveStrength += probabilityToStrength(amount);
+                    } else {
+                        negativeSum += amount;
+                    }
+                }
+                case MULTIPLY_BASE -> multiplyBase *= (1.0 + amount);
+                case MULTIPLY_TOTAL -> multiplyTotal *= (1.0 + amount);
+            }
+        }
+
+        return new double[]{positiveStrength, negativeSum, multiplyBase * multiplyTotal};
+    }
+
+    private static double[] getDamageReductionParts(AttributeInstance instance) {
+        if (instance == null) return new double[]{0.0, 0.0, 1.0};
+        return damageReductionCache.computeIfAbsent(instance, AttributeCalculationHelper::computeDamageReductionUncached);
+    }
+
+    /**
+     * 减伤属性的伤害因子（实际受伤比例）：
+     * 正向 e^(-s·m) ∈ (0,1]（s·m → +∞ 时为 0，绝对免疫）× 负向 (1 + |Σp|·m) ≥ 1（线性放大）。
+     */
+    public static double getDamageReductionFactor(AttributeInstance instance) {
+        double[] parts = getDamageReductionParts(instance);
+        double positiveStrength = parts[0] * parts[2];
+        double negativeSum = parts[1] * parts[2];
+
+        double positiveFactor = Double.isInfinite(positiveStrength) ? 0.0 : Math.exp(-positiveStrength);
+        double negativeFactor = 1.0 - negativeSum;
+        return positiveFactor * negativeFactor;
+    }
+
+    /**
+     * 减伤属性对外展示的概率值（供 AttributeMap.getValue 使用）：
+     * 正向概率 - |负向属性值和|，与实际伤害因子保持同一套正负分离模型。
+     */
+    public static double getDamageReductionProbability(AttributeInstance instance) {
+        double[] parts = getDamageReductionParts(instance);
+        double positiveStrength = parts[0] * parts[2];
+        double negativeSum = parts[1] * parts[2];
+
+        double positiveProbability = Double.isInfinite(positiveStrength) ? 1.0 : -Math.expm1(-positiveStrength);
+        return positiveProbability + negativeSum;
     }
 
     public static double getPhysicalDamageFactor(LivingEntity entity) {
-        return getDamageFactorFromStrength(computeStrength(entity.getAttribute(PHYSICAL_DAMAGE_REDUCTION.get())));
+        return getDamageReductionFactor(entity.getAttribute(PHYSICAL_DAMAGE_REDUCTION.get()));
     }
 
     public static double getMagicDamageFactor(LivingEntity entity) {
-        return getDamageFactorFromStrength(computeStrength(entity.getAttribute(MAGIC_DAMAGE_REDUCTION.get())));
+        return getDamageReductionFactor(entity.getAttribute(MAGIC_DAMAGE_REDUCTION.get()));
     }
 
     public static double getEnvironmentalDamageFactor(LivingEntity entity) {
-        return getDamageFactorFromStrength(computeStrength(entity.getAttribute(ENVIRONMENTAL_DAMAGE_REDUCTION.get())));
+        return getDamageReductionFactor(entity.getAttribute(ENVIRONMENTAL_DAMAGE_REDUCTION.get()));
     }
 
     public static double getAllDamageFactor(LivingEntity entity) {
-        return getDamageFactorFromStrength(computeStrength(entity.getAttribute(DAMAGE_REDUCTION.get())));
+        return getDamageReductionFactor(entity.getAttribute(DAMAGE_REDUCTION.get()));
     }
 
     // ================= 无视无敌时间=================
@@ -157,6 +227,7 @@ public class AttributeCalculationHelper {
     public static double getScaleFactor(LivingEntity entity) {
         AttributeInstance instance = entity.getAttribute(SCALE.get());
         if (instance == null) return 1.0;
+        if (isAttributeDisabled(instance.getAttribute())) return instance.getAttribute().getDefaultValue();
 
         double positiveSum = instance.getBaseValue(); // 正向累加（含基础值，默认 1.0）
         double negativeStrength = 0.0;                 // 负向强度
@@ -197,6 +268,7 @@ public class AttributeCalculationHelper {
         AttributeInstance instance = entity.getAttribute(HURT_RECOVERY.get());
         float maxHealth = entity.getMaxHealth();
         if (instance == null) return 0f;
+        if (isAttributeDisabled(instance.getAttribute())) return 0f;
 
         double sum = 0.0;
 
@@ -216,6 +288,25 @@ public class AttributeCalculationHelper {
         }
 
         return (float)Math.max(0, sum);
+    }
+
+    /**
+     * 强度域伤害因子（背刺专用）：攻击者加成与受害者抵抗在强度域抵消。
+     * - strength > 0：净减伤，factor = e^(-strength) ∈ (0, 1)
+     * - strength < 0：净加成，factor = 1 + |strength| > 1（强度域线性）
+     * - strength = +∞：绝对减伤（0 伤害）
+     */
+    private static double getDamageFactorFromStrength(double strength) {
+        if (Double.isInfinite(strength)) {
+            return strength > 0 ? 0.0 : Double.POSITIVE_INFINITY;
+        }
+
+        if (strength < 0) {
+            return 1.0 + Math.abs(strength);
+        }
+
+        // 返回实际受伤比例
+        return Math.exp(-strength);
     }
 
     /**
@@ -239,6 +330,9 @@ public class AttributeCalculationHelper {
      */
     public static float getExecuteThresholdValue(AttributeInstance executeThreshold, double maxHealth) {
         if (executeThreshold != null) {
+            // 被禁用的属性：等同属性不存在，不触发斩杀
+            if (isAttributeDisabled(executeThreshold.getAttribute())) return 0.0f;
+
             double maxAddition = 0.0;
             double maxMultiplication = 0.0;
             for (AttributeModifier modifier : executeThreshold.getModifiers()) {
@@ -255,6 +349,9 @@ public class AttributeCalculationHelper {
 
     public static float getIncomingDamageCapValue(AttributeInstance incomingDamageCap, double maxHealth) {
         if (incomingDamageCap != null) {
+            // 被禁用的属性：等同属性不存在，无单次伤害上限
+            if (isAttributeDisabled(incomingDamageCap.getAttribute())) return Float.POSITIVE_INFINITY;
+
             double minAddition = Double.MAX_VALUE;
             double minMultiplication = 1.0;
 

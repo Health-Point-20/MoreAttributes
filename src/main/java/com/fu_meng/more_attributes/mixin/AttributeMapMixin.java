@@ -17,7 +17,9 @@ import java.util.Set;
 
 import static com.fu_meng.more_attributes.AttributesRegistry.*;
 import static com.fu_meng.more_attributes.api.AttributeCalculationHelper.getProbability;
+import static com.fu_meng.more_attributes.api.AttributeCalculationHelper.getDamageReductionProbability;
 import static com.fu_meng.more_attributes.api.AttributeCalculationHelper.getIncomingDamageCapValue;
+import static com.fu_meng.more_attributes.MAConfig.isAttributeDisabled;
 
 import com.fu_meng.more_attributes.api.accessor.AttributeInstanceAccessor;
 
@@ -32,21 +34,34 @@ public abstract class AttributeMapMixin {
     /** 需要覆盖为概率值的属性集合 */
     @Unique
     private static final Set<Attribute> PROBABILITY_ATTRIBUTES = Set.of(
-            PHYSICAL_DAMAGE_REDUCTION.get(),
-            MAGIC_DAMAGE_REDUCTION.get(),
-            ENVIRONMENTAL_DAMAGE_REDUCTION.get(),
-            DAMAGE_REDUCTION.get(),
             EVASION.get(),
             IGNORE_INVINCIBLE_TIME.get(),
             BACKSTAB_RESISTANCE.get()
     );
 
+    /** 减伤类属性集合：正负分离模型（正值强度叠加，负值线性叠加），单独走对应概率转换 */
+    @Unique
+    private static final Set<Attribute> DAMAGE_REDUCTION_ATTRIBUTES = Set.of(
+            PHYSICAL_DAMAGE_REDUCTION.get(),
+            MAGIC_DAMAGE_REDUCTION.get(),
+            ENVIRONMENTAL_DAMAGE_REDUCTION.get(),
+            DAMAGE_REDUCTION.get()
+    );
+
     @Inject(method = "getValue", at = @At("RETURN"), cancellable = true)
     private void onGetValue(Attribute pAttribute, CallbackInfoReturnable<Double> cir) {
+        // 被禁用的属性：直接返回默认值（等同属性不存在），不参与概率转换与伤害上限计算
+        if (isAttributeDisabled(pAttribute)) {
+            cir.setReturnValue(pAttribute.getDefaultValue());
+            return;
+        }
+
         AttributeInstance instance = attributes.get(pAttribute);
         if (instance == null) return;
 
-        if (PROBABILITY_ATTRIBUTES.contains(pAttribute)) {
+        if (DAMAGE_REDUCTION_ATTRIBUTES.contains(pAttribute)) {
+            cir.setReturnValue(getDamageReductionProbability(instance));
+        } else if (PROBABILITY_ATTRIBUTES.contains(pAttribute)) {
             cir.setReturnValue(getProbability(instance));
         } else if (pAttribute == INCOMING_DAMAGE_CAP.get()) {
             Attribute maxHealthAttribute = Attributes.MAX_HEALTH;

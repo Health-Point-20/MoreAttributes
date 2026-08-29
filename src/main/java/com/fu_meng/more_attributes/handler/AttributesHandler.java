@@ -28,6 +28,7 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.fml.ModList;
+import net.minecraftforge.registries.ForgeRegistries;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import net.minecraftforge.common.ForgeMod;
@@ -58,13 +59,21 @@ public class AttributesHandler {
     private static final Map<UUID, Long> HURT_RECORD = new ConcurrentHashMap<>();
     // Map<弹射物, 受击者>
     private static final Map<UUID, UUID> PROJECTILE_RECORD = new ConcurrentHashMap<>();
-    // 记录攻击者本 tick 是否已触发过生命值相关伤害提升
-    private static final Map<UUID, Long> HEALTH_DAMAGE_TICK_RECORD = new ConcurrentHashMap<>();
+    // 记录攻击者本 tick 是否已触发过生命值相关伤害提升（每 tick 清空，条目生命周期严格为一个 tick）
+    private static final Set<UUID> HEALTH_DAMAGE_TICK_RECORD = ConcurrentHashMap.newKeySet();
     // 记录玩家通过 AttackEntityEvent 触发的直接攻击目标 UUID，用于 healthDamagePlayerOnly 判定
     private static final Map<UUID, UUID> PLAYER_DIRECT_ATTACK_TARGET = new ConcurrentHashMap<>();
 
     // 多重射击复制品标记键
     private static final String MULTISHOT_CLONE_KEY = "more_attributes$multishot_clone";
+    // 多重射击已克隆标记：防止弹射物重复加入世界时（区块卸载重载）重复克隆
+    private static final String MULTISHOT_SPAWNED_KEY = "more_attributes$multishot_spawned";
+
+    // 小数累积器 PersistentData 键（统一命名空间前缀，避免与其他 mod 冲突）
+    private static final String REMAINING_INVINCIBLE_TIME_KEY = "more_attributes$remaining_invincible_time";
+    private static final String REMAINING_EATING_SPEED_KEY = "more_attributes$remaining_eating_speed";
+    private static final String REMAINING_DRAW_SPEED_KEY = "more_attributes$remaining_draw_speed";
+    private static final String REMAINING_OXYGEN_CONSUMPTION_KEY = "more_attributes$remaining_oxygen_consumption";
 
     private static boolean isMultishotClone(Entity entity) {
         return entity.getPersistentData().getBoolean(MULTISHOT_CLONE_KEY);
@@ -72,9 +81,10 @@ public class AttributesHandler {
 
     // 箭矢弹射 PersistentData 键
     private static final String ARROW_BOUNCE_REMAINING_KEY = "more_attributes$bounce_remaining";
-    private static final String ARROW_BOUNCE_FALLOFF_KEY = "more_attributes$bounce_falloff";
     private static final String ARROW_BOUNCE_HIT_LIST_KEY = "more_attributes$bounce_hit_list";
     private static final String ARROW_BOUNCE_CLONE_KEY = "more_attributes$bounce_clone";
+    // 箭矢属性已应用标记：防止箭矢重复加入世界时（区块卸载重载）重复应用箭矢属性
+    private static final String ARROW_ATTRS_APPLIED_KEY = "more_attributes$arrow_attrs_applied";
 
     private static boolean isBounceClone(Entity entity) {
         return entity.getPersistentData().getBoolean(ARROW_BOUNCE_CLONE_KEY);
@@ -98,11 +108,6 @@ public class AttributesHandler {
             if (uuidStr.equals(list.getString(i))) return true;
         }
         return false;
-    }
-
-    private static void copyBounceHitList(CompoundTag src, CompoundTag dst) {
-        ListTag list = src.getList(ARROW_BOUNCE_HIT_LIST_KEY, Tag.TAG_STRING);
-        dst.put(ARROW_BOUNCE_HIT_LIST_KEY, list.copy());
     }
 
     @SubscribeEvent
@@ -145,15 +150,13 @@ public class AttributesHandler {
         }
         LivingEntity attacker = projectile.getOwner() instanceof LivingEntity living2 ? living2 : null;
 
+        // 闪避判定与命中记录仅服务端执行：ProjectileImpactEvent 双端触发，
+        // 客户端写入 PROJECTILE_RECORD 后无清理路径（LivingAttackEvent 不在客户端触发），会导致内存泄漏
         boolean dodged = false;
-        if (victim != null && attacker != null) {
-            double finalHitProb = AttributeCalculationHelper.getFinalHitProbability(attacker, victim);
-            if (victim.getRandom().nextFloat() >= finalHitProb) {
+        if (victim != null && attacker != null && !projectile.level().isClientSide()) {
+            dodged = rollDodge(attacker, victim);
+            if (dodged) {
                 event.setImpactResult(ProjectileImpactEvent.ImpactResult.SKIP_ENTITY);
-                dodged = true;
-                if (attacker instanceof Player player) {
-                    player.displayClientMessage(Component.translatable("more_attributes.hit_miss", victim.getDisplayName()), true);
-                }
             } else {
                 PROJECTILE_RECORD.put(projectile.getUUID(), victim.getUUID());
             }
@@ -182,13 +185,43 @@ public class AttributesHandler {
         }
     }
 
+    /**
+     * 箭矢属性统一应用入口（穿透/伤害/速度/精准度/弹射次数）。
+     * 合并原先两个同优先级的 EntityJoinLevelEvent 处理器，保证属性应用顺序确定；
+     * 多重射击克隆在 LOW 优先级的 onMultishotProjectileJoin 中处理，确保克隆时继承的是已修改的弹射物状态。
+     */
     @SubscribeEvent
-    public static void onEntityJoin(EntityJoinLevelEvent event) {
-        // 处理箭矢穿透属性
-        if (event.getEntity() instanceof AbstractArrow arrow && arrow.getOwner() instanceof LivingEntity shooter) {
-            if (isProcessedClone(arrow)) return; // 跳过克隆弹射物（已从原弹射物继承属性）
-            double pierceCount = shooter.getAttributeValue(ARROW_PIERCE.get());
-            arrow.setPierceLevel((byte) (arrow.getPierceLevel() + pierceCount));
+    public static void onArrowJoinLevel(EntityJoinLevelEvent event) {
+        // 仅服务端处理：客户端箭矢不携带 PersistentData（克隆标记无法同步，isProcessedClone 恒为 false），
+        // 且箭矢属性均为服务端结算，客户端重复应用会造成弹射箭视觉速度与实际不符
+        if (event.getLevel().isClientSide()) return;
+        if (!(event.getEntity() instanceof AbstractArrow arrow)) return;
+        if (isProcessedClone(arrow)) return; // 跳过克隆弹射物（已从原弹射物继承属性）
+        if (!(arrow.getOwner() instanceof LivingEntity shooter)) return;
+        CompoundTag arrowTag = arrow.getPersistentData();
+        if (arrowTag.getBoolean(ARROW_ATTRS_APPLIED_KEY)) return; // 已应用过（区块卸载重载后重新加入世界）
+        arrowTag.putBoolean(ARROW_ATTRS_APPLIED_KEY, true);
+
+        // 穿透
+        double pierceCount = shooter.getAttributeValue(ARROW_PIERCE.get());
+        arrow.setPierceLevel((byte) (arrow.getPierceLevel() + pierceCount));
+
+        // 伤害与速度
+        double arrowDamage = shooter.getAttributeValue(ARROW_DAMAGE.get());
+        double arrowVelocity = shooter.getAttributeValue(ARROW_VELOCITY.get());
+        arrow.setBaseDamage(arrow.getBaseDamage() * arrowDamage);
+        arrow.setDeltaMovement(arrow.getDeltaMovement().scale(arrowVelocity));
+
+        // 箭矢精准度：负值时对原箭矢施加随机角度偏移
+        double arrowAccuracy = shooter.getAttributeValue(ARROW_ACCURACY.get());
+        if (arrowAccuracy < 0) {
+            applyAccuracyOffset(arrow, arrowAccuracy);
+        }
+
+        // 箭矢弹射：写入剩余弹射次数（衰减系数为全局配置，弹射时直接读取，不冗余存储）
+        double arrowBounce = shooter.getAttributeValue(ARROW_BOUNCE.get());
+        if (arrowBounce > 0) {
+            arrowTag.putInt(ARROW_BOUNCE_REMAINING_KEY, (int) arrowBounce);
         }
     }
 
@@ -223,12 +256,9 @@ public class AttributesHandler {
 
         // 近战及其他攻击：进行闪避判定
         try {
-            double finalHitProb = AttributeCalculationHelper.getFinalHitProbability(attacker, victim);
-            if (victim.getRandom().nextFloat() >= finalHitProb) {
+            if (rollDodge(attacker, victim)) {
                 event.setCanceled(true);
-                if (attacker instanceof Player player) {
-                    player.displayClientMessage(Component.translatable("more_attributes.hit_miss", victim.getDisplayName()), true);
-                }
+                return; // 已闪避，不再进行伤害记录
             }
         } catch (Exception e) {
             LOGGER.warn("计算攻击时出错: {}", e.getMessage());
@@ -281,12 +311,12 @@ public class AttributesHandler {
             CompoundTag tag = victim.getPersistentData();
             if (ignoreRate != 0){
                 double invincibleTime = victim.invulnerableTime * (1.0 - ignoreRate);
-                double remainingTime = tag.getDouble("RemainingInvincibleTime");
+                double remainingTime = tag.getDouble(REMAINING_INVINCIBLE_TIME_KEY);
                 double newTime = invincibleTime + remainingTime;
                 victim.invulnerableTime = (int) newTime;
-                tag.putDouble("RemainingInvincibleTime", newTime - (int) newTime);
+                tag.putDouble(REMAINING_INVINCIBLE_TIME_KEY, newTime - (int) newTime);
             } else {
-                tag.remove("RemainingInvincibleTime");
+                tag.remove(REMAINING_INVINCIBLE_TIME_KEY);
             }
 
             // 处理伤害倍率属性
@@ -295,8 +325,8 @@ public class AttributesHandler {
             multiplier = (float) damageMultiplier;
             // 魔法伤害倍率
             if (isMagicDamage) {
-                double magicDamage = attacker.getAttributeValue(MAGIC_DAMAGE_MULTIPLIER.get());
-                multiplier += (float) magicDamage;
+                double magicDamageMultiplier = attacker.getAttributeValue(MAGIC_DAMAGE_MULTIPLIER.get()) - 1;
+                multiplier += (float) magicDamageMultiplier;
             }
             damage *= multiplier;
 
@@ -353,7 +383,6 @@ public class AttributesHandler {
 
             // 处理基于生命值的额外伤害（最大生命值伤害 + 当前生命值伤害）
             // 额外伤害队列（溅射/额外魔法伤害等）不再触发，避免递归叠加
-            // 每tick记录在 onServerTick START 阶段清空，因此 containsKey 即代表本tick已触发过
             if (!isOnDealExtraDamage()) {
                 // 通过 AttackEntityEvent 记录判定玩家直接攻击：仅玩家左键攻击实体会触发该事件
                 // 命中匹配后立即移除记录，确保同 tick 内的横扫次级目标不再被判定为直接攻击
@@ -364,13 +393,13 @@ public class AttributesHandler {
                 }
                 if (!healthDamagePlayerOnly || playerDirectAttack) {
                     boolean canTrigger = !healthDamageOncePerTick
-                            || !HEALTH_DAMAGE_TICK_RECORD.containsKey(attacker.getUUID());
+                            || !HEALTH_DAMAGE_TICK_RECORD.contains(attacker.getUUID());
                     if (canTrigger) {
                         float healthBonus = AttributeCalculationHelper.getHealthBasedDamageBonus(attacker, victim);
                         if (healthBonus > 0.0F) {
                             damage += healthBonus;
                             if (healthDamageOncePerTick) {
-                                HEALTH_DAMAGE_TICK_RECORD.put(attacker.getUUID(), attacker.level().getGameTime());
+                                HEALTH_DAMAGE_TICK_RECORD.add(attacker.getUUID());
                             }
                         }
                     }
@@ -449,6 +478,21 @@ public class AttributesHandler {
     }
 
     /**
+     * 闪避判定：按最终命中概率掷骰，未命中返回 true 并向玩家攻击者提示闪避。
+     * 供 ProjectileImpactEvent（弹射物）与 LivingAttackEvent（近战等）共用。
+     */
+    private static boolean rollDodge(LivingEntity attacker, LivingEntity victim) {
+        double finalHitProb = AttributeCalculationHelper.getFinalHitProbability(attacker, victim);
+        if (victim.getRandom().nextFloat() >= finalHitProb) {
+            if (attacker instanceof Player player) {
+                player.displayClientMessage(Component.translatable("more_attributes.hit_miss", victim.getDisplayName()), true);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * 伤害分摊：受害者受到伤害时，范围内「伤害分摊属性值非默认值（>0）」的友方（坦克定位）
      * 有资格成为承担者，伤害按权重在受害者与各承担者之间分摊。
      * 属性值为默认值（0）的实体不会分摊别人的伤害（不进入承担者列表）。
@@ -502,14 +546,16 @@ public class AttributesHandler {
             event.setAmount(incomingDamageCapValue);
         }
 
-        // 处理斩杀阈值：攻击者的斩杀阈值属性，受害者当前血量低于阈值时直接处决（对所有生物生效）
+        // 处理斩杀阈值：攻击者的斩杀阈值属性，受害者当前血量低于阈值时直接处决
+        // executeThresholdBlacklist 配置中的生物类型（默认为原版Boss）免疫斩杀
         if (attacker != null) {
             AttributeInstance executeThresholdAttr = attacker.getAttribute(EXECUTE_THRESHOLD.get());
             double executeThreshold = AttributeCalculationHelper.getExecuteThresholdValue(executeThresholdAttr, maxHealth);
-            if (executeThreshold > 0 && victim.getHealth() > 0 && victim.getHealth() <= executeThreshold) {
+            if (executeThreshold > 0 && victim.getHealth() > 0 && victim.getHealth() <= executeThreshold
+                    && !executeThresholdBlacklist.contains(ForgeRegistries.ENTITY_TYPES.getKey(victim.getType()))) {
                 DamageSource executeSource = event.getSource();
-                victim.setHealth(0.0F);
                 victim.die(executeSource);
+                victim.setHealth(0.0F);
                 if (attacker instanceof Player player) {
                     player.displayClientMessage(Component.translatable("more_attributes.execute_triggered"), true);
                 }
@@ -709,12 +755,13 @@ public class AttributesHandler {
         // regenPerTick=false: 每 20 tick 集中回一次完整值（每秒回一次）
         double healthRegen = living.getAttributeValue(HEALTH_REGEN.get());
         double percentRegen = living.getAttributeValue(PERCENT_HEALTH_REGEN.get());
+        // 属性为默认值 0 时不调用 heal：heal(0) 仍会发布 LivingHealEvent，造成全服每 tick 的空事件开销
         if (regenPerTick) {
-            living.heal((float) (healthRegen / 20.0));
-            living.heal((float) (living.getMaxHealth() * percentRegen / 20.0));
+            if (healthRegen > 0) living.heal((float) (healthRegen / 20.0));
+            if (percentRegen > 0) living.heal((float) (living.getMaxHealth() * percentRegen / 20.0));
         } else if (living.tickCount % 20 == 0) {
-            living.heal((float) healthRegen);
-            living.heal((float) (living.getMaxHealth() * percentRegen));
+            if (healthRegen > 0) living.heal((float) healthRegen);
+            if (percentRegen > 0) living.heal((float) (living.getMaxHealth() * percentRegen));
         }
 
         if (living instanceof Player player && !player.level().isClientSide) {
@@ -744,6 +791,9 @@ public class AttributesHandler {
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.START) {
             AttributeCalculationHelper.clearStrengthCache();
+            // 伤害记录在同 tick 的 Attack→Hurt→Damage 链路内写入并消费；
+            // tick 起始清空可兜底攻击被其他处理器取消导致 LivingDamageEvent 未触发的残留，防止内存驻留
+            DAMAGE_RECORD.clear();
             HEALTH_DAMAGE_TICK_RECORD.clear();
             PLAYER_DIRECT_ATTACK_TARGET.clear();
         }
@@ -767,12 +817,12 @@ public class AttributesHandler {
             // 计算新的使用时间
             if (isEdible || isDrinkable) {
                 double eatingSpeedValue = eatingSpeed.getValue() - 1;
-                double remainingEatingSpeed = tag.getDouble("remainingEatingSpeed");
+                double remainingEatingSpeed = tag.getDouble(REMAINING_EATING_SPEED_KEY);
 
                 double totalSpeed = eatingSpeedValue + remainingEatingSpeed;
                 int newDuration = event.getDuration() - (int) totalSpeed;
                 remainingEatingSpeed = totalSpeed - (int) totalSpeed;
-                tag.putDouble("remainingEatingSpeed", remainingEatingSpeed);
+                tag.putDouble(REMAINING_EATING_SPEED_KEY, remainingEatingSpeed);
 
                 event.setDuration(newDuration);
             }
@@ -787,12 +837,12 @@ public class AttributesHandler {
             // 计算新的使用时间
             if (isBow) {
                 double drawingSpeedValue = drawSpeed.getValue() - 1;
-                double remainingDrawSpeed = tag.getDouble("remainingDrawSpeed");
+                double remainingDrawSpeed = tag.getDouble(REMAINING_DRAW_SPEED_KEY);
 
                 double totalSpeed = drawingSpeedValue + remainingDrawSpeed;
                 int newDuration = event.getDuration() - (int) totalSpeed;
                 remainingDrawSpeed = totalSpeed - (int) totalSpeed;
-                tag.putDouble("remainingDrawSpeed", remainingDrawSpeed);
+                tag.putDouble(REMAINING_DRAW_SPEED_KEY, remainingDrawSpeed);
 
                 event.setDuration(newDuration);
             }
@@ -807,33 +857,6 @@ public class AttributesHandler {
         // 处理挖掘速度属性
         float newSpeed = originalSpeed * (float) player.getAttributeValue(MINING_SPEED.get());
         event.setNewSpeed(newSpeed);
-    }
-
-    @SubscribeEvent
-    public static void onEntityJoinWorld(EntityJoinLevelEvent event) {
-        if (event.getEntity() instanceof AbstractArrow arrow) {
-            if (isProcessedClone(arrow)) return; // 跳过克隆弹射物
-            if (arrow.getOwner() instanceof LivingEntity living) {
-                double arrowDamage = living.getAttributeValue(ARROW_DAMAGE.get());
-                double arrowVelocity = living.getAttributeValue(ARROW_VELOCITY.get());
-                arrow.setBaseDamage(arrow.getBaseDamage() * arrowDamage);
-                arrow.setDeltaMovement(arrow.getDeltaMovement().scale(arrowVelocity));
-
-                // 处理箭矢精准度：负值时对原箭矢施加随机角度偏移
-                double arrowAccuracy = living.getAttributeValue(ARROW_ACCURACY.get());
-                if (arrowAccuracy < 0) {
-                    applyAccuracyOffset(arrow, arrowAccuracy);
-                }
-
-                // 处理箭矢弹射：写入弹射次数与衰减系数到箭矢 PersistentData
-                double arrowBounce = living.getAttributeValue(ARROW_BOUNCE.get());
-                if (arrowBounce > 0) {
-                    CompoundTag arrowTag = arrow.getPersistentData();
-                    arrowTag.putInt(ARROW_BOUNCE_REMAINING_KEY, (int) arrowBounce);
-                    arrowTag.putDouble(ARROW_BOUNCE_FALLOFF_KEY, arrowBounceDamageFalloff);
-                }
-            }
-        }
     }
 
     /**
@@ -853,6 +876,11 @@ public class AttributesHandler {
         double multishotAmount = shooter.getAttributeValue(MULTISHOT_AMOUNT.get());
         int extraCount = (int) multishotAmount;
         if (extraCount <= 0) return;
+
+        // 已克隆过的不再重复克隆
+        CompoundTag projectileTag = projectile.getPersistentData();
+        if (projectileTag.getBoolean(MULTISHOT_SPAWNED_KEY)) return;
+        projectileTag.putBoolean(MULTISHOT_SPAWNED_KEY, true);
 
         spawnMultishotClones(projectile, shooter, extraCount);
     }
@@ -889,7 +917,14 @@ public class AttributesHandler {
             cloneEntity.load(nbt);
 
             // 标记为复制品
-            cloneEntity.getPersistentData().putBoolean(MULTISHOT_CLONE_KEY, true);
+            CompoundTag cloneTag = cloneEntity.getPersistentData();
+            cloneTag.putBoolean(MULTISHOT_CLONE_KEY, true);
+            // 按配置决定是否继承弹射状态：弹射剩余次数/已命中列表会随 ForgeData 克隆，
+            // 继承时总弹射次数随克隆数量成倍放大（multishotCloneInheritsBounce=false 时不继承、克隆箭不弹射）
+            if (!multishotCloneInheritsBounce) {
+                cloneTag.remove(ARROW_BOUNCE_REMAINING_KEY);
+                cloneTag.remove(ARROW_BOUNCE_HIT_LIST_KEY);
+            }
 
             // 确保所有者正确
             cloneProjectile.setOwner(shooter);
@@ -1014,10 +1049,6 @@ public class AttributesHandler {
      */
     private static void spawnBounceClone(AbstractArrow original, LivingEntity shooter,
                                          LivingEntity nextTarget, int remaining) {
-        CompoundTag originalTag = original.getPersistentData();
-        double falloff = originalTag.contains(ARROW_BOUNCE_FALLOFF_KEY)
-                ? originalTag.getDouble(ARROW_BOUNCE_FALLOFF_KEY) : arrowBounceDamageFalloff;
-
         CompoundTag nbt = original.saveWithoutId(new CompoundTag());
         nbt.remove("UUID"); // 移除 UUID 以避免冲突，create() 会分配新 UUID
         Entity cloneEntity = original.getType().create(original.level());
@@ -1027,13 +1058,11 @@ public class AttributesHandler {
         CompoundTag cloneTag = cloneEntity.getPersistentData();
         // 标记为弹射克隆（跳过多重射击/箭矢属性重复处理）
         cloneTag.putBoolean(ARROW_BOUNCE_CLONE_KEY, true);
-        // 设置弹射状态：剩余次数 -1，衰减系数，显式复制已命中列表（防止 load 未携带 PersistentData）
+        // 剩余次数 -1；已命中列表随 ForgeData 克隆自动继承，无需显式复制
         cloneTag.putInt(ARROW_BOUNCE_REMAINING_KEY, remaining - 1);
-        cloneTag.putDouble(ARROW_BOUNCE_FALLOFF_KEY, falloff);
-        copyBounceHitList(originalTag, cloneTag);
 
-        // 伤害衰减
-        clone.setBaseDamage(clone.getBaseDamage() * falloff);
+        // 伤害衰减（衰减系数为全局配置，直接读取）
+        clone.setBaseDamage(clone.getBaseDamage() * arrowBounceDamageFalloff);
 
         // 清除穿透等级：弹射链跳数由剩余次数控制，防止克隆箭穿透造成不可预测的连锁分支与残留
         clone.setPierceLevel((byte) 0);
@@ -1046,7 +1075,14 @@ public class AttributesHandler {
         Vec3 targetCenter = nextTarget.position().add(0, nextTarget.getBbHeight() * 0.5, 0);
         Vec3 dir = targetCenter.subtract(start).normalize();
         clone.setPos(start.x, start.y, start.z);
-        double speed = Math.max(original.getDeltaMovement().length(), 1.0);
+        // 最低发射速度 1.0 保证弹射箭能飞抵目标（过慢的箭会被重力拖偏坠地）；
+        // 原版箭矢伤害 = 命中速度 × 基础伤害，速度被下限提升时按比例下调基础伤害，
+        // 保证弹射伤害仍严格按 falloff 衰减，避免远程慢箭出现越弹射伤害越高
+        double impactSpeed = original.getDeltaMovement().length();
+        double speed = Math.max(impactSpeed, 1.0);
+        if (speed > impactSpeed && impactSpeed > 0.0) {
+            clone.setBaseDamage(clone.getBaseDamage() * (impactSpeed / speed));
+        }
         clone.shoot(dir.x, dir.y, dir.z, (float) speed, 0.0F);
 
         // 防刷箭
@@ -1071,17 +1107,17 @@ public class AttributesHandler {
         // 消耗为正时，基础变动为正（消耗氧气值）；为负时，基础变动为负（恢复氧气值）
         int baseChange = consumptionAmount > 0 ? consumptionAmount : -refillAmount;
 
-        if (baseChange == 0 && tag.getDouble("remainingOxygenConsumption") == 0) {
+        if (baseChange == 0 && tag.getDouble(REMAINING_OXYGEN_CONSUMPTION_KEY) == 0) {
             return; // 既没有消耗也没有恢复，且没有余数，返回
         }
 
         // 计算实际总变动量（包含前次处理剩余小数）
-        double shouldConsumption = oxygenConsumptionRate * baseChange + tag.getDouble("remainingOxygenConsumption");
+        double shouldConsumption = oxygenConsumptionRate * baseChange + tag.getDouble(REMAINING_OXYGEN_CONSUMPTION_KEY);
         int finalConsumption = (int) shouldConsumption;
 
         // 更新小数余数
         double remainder = shouldConsumption % 1.0;
-        tag.putDouble("remainingOxygenConsumption", remainder);
+        tag.putDouble(REMAINING_OXYGEN_CONSUMPTION_KEY, remainder);
 
         // 根据最终计算结果的正负，决定是消耗还是恢复氧气
         if (finalConsumption > 0) {
@@ -1099,5 +1135,4 @@ public class AttributesHandler {
             event.setRefillAirAmount(0);
         }
     }
-
 }

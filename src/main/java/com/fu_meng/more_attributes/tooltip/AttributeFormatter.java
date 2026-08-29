@@ -92,7 +92,7 @@ public class AttributeFormatter {
             MAGIC_DAMAGE_MULTIPLIER.get(), DAMAGE_MULTIPLIER.get(),
             OXYGEN_CONSUMPTION_RATE.get(), SCALE.get(),
             BACKSTAB_DAMAGE.get(), BACKSTAB_RESISTANCE.get(),
-            CLIMBING_SPEED.get(), EXPERIENCE_GAIN_RATIO.get(),
+            CLIMBING_SPEED.get(), EXPERIENCE_GAIN_RATIO.get(), SNEAK_SPEED.get(),
             MAX_HEALTH_DAMAGE.get(), CURRENT_HEALTH_DAMAGE.get()
     );
 

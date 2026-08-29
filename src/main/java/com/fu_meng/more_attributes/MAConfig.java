@@ -1,12 +1,14 @@
 package com.fu_meng.more_attributes;
 
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.config.ModConfig;
 import net.minecraftforge.fml.event.config.ModConfigEvent;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.HashSet;
 import java.util.List;
@@ -32,12 +34,15 @@ public class MAConfig {
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> CONSIDERED_MAGIC_DAMAGE;
     public static final ForgeConfigSpec.BooleanValue AGGRO_ENABLED;
     public static final ForgeConfigSpec.DoubleValue MULTISHOT_SPREAD_PER_POINT;
+    public static final ForgeConfigSpec.BooleanValue MULTISHOT_CLONE_INHERITS_BOUNCE;
     public static final ForgeConfigSpec.BooleanValue HEALTH_DAMAGE_PLAYER_ONLY;
     public static final ForgeConfigSpec.BooleanValue HEALTH_DAMAGE_ONCE_PER_TICK;
     public static final ForgeConfigSpec.DoubleValue DAMAGE_SHARING_RANGE;
     public static final ForgeConfigSpec.DoubleValue DAMAGE_SHARING_DEFAULT_WEIGHT;
     public static final ForgeConfigSpec.DoubleValue ARROW_BOUNCE_SEARCH_RANGE;
     public static final ForgeConfigSpec.DoubleValue ARROW_BOUNCE_DAMAGE_FALLOFF;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> EXECUTE_THRESHOLD_BLACKLIST;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> DISABLED_ATTRIBUTES;
 
     public static boolean hungerRateAffectRegeneration;
     public static boolean regenPerTick;
@@ -53,12 +58,15 @@ public class MAConfig {
     public static Set<ResourceLocation> consideredMagicDamage;
     public static boolean aggroEnabled;
     public static double multishotSpreadPerPoint;
+    public static boolean multishotCloneInheritsBounce;
     public static boolean healthDamagePlayerOnly;
     public static boolean healthDamageOncePerTick;
     public static double damageSharingRange;
     public static double damageSharingDefaultWeight;
     public static double arrowBounceSearchRange;
     public static double arrowBounceDamageFalloff;
+    public static Set<ResourceLocation> executeThresholdBlacklist;
+    private static volatile Set<ResourceLocation> disabledAttributes;
 
     static {
         BUILDER.push("More Attributes Config");
@@ -91,6 +99,7 @@ public class MAConfig {
         AGGRO_ENABLED = BUILDER.comment("Whether the aggro (threat) attribute is enabled.").comment("是否启用仇恨值属性").define("aggroEnabled", true);
 
         MULTISHOT_SPREAD_PER_POINT = BUILDER.comment("Spread angle per multishot point in degrees. Total spread grows with the attribute value.").comment("每点多重射击属性的散布角度（度），总散布角度随属性值增长").defineInRange("multishotSpreadPerPoint", 5.0, 0.1, 180.0);
+        MULTISHOT_CLONE_INHERITS_BOUNCE = BUILDER.comment("Whether multishot clones inherit the arrow bounce state from the original arrow. When true, each clone carries the same remaining bounce count as the original (bounce charges are effectively multiplied by the number of clones); when false, multishot clones never bounce.").comment("多重射击克隆箭是否继承原箭的弹射状态。true 时每支克隆箭携带与原箭相同的剩余弹射次数（弹射次数随克隆数量成倍放大）；false 时多重射击克隆箭不触发弹射").define("multishotCloneInheritsBounce", true);
 
         HEALTH_DAMAGE_PLAYER_ONLY = BUILDER.comment("Whether health-based damage bonus (max health damage / current health damage) is only triggered by the player's direct melee attacks.").comment("是否仅玩家直接攻击（近战）才能触发生命值相关伤害提升（最大生命值伤害与当前生命值伤害）").define("healthDamagePlayerOnly", false);
         HEALTH_DAMAGE_ONCE_PER_TICK = BUILDER.comment("Whether each attacker can only trigger health-based damage bonus once per tick.").comment("每tick每个攻击者仅能触发一次生命值相关的伤害提升").define("healthDamageOncePerTick", false);
@@ -99,6 +108,12 @@ public class MAConfig {
         DAMAGE_SHARING_DEFAULT_WEIGHT = BUILDER.comment("Default weight added to every participant's damage sharing weight. Guarantees the victim always retains a non-zero share.").comment("每个分摊参与者的默认权重（加到属性值上），保证受害者始终保留非零份额").defineInRange("damageSharingDefaultWeight", 1.0, 0.0, Double.MAX_VALUE);
         ARROW_BOUNCE_SEARCH_RANGE = BUILDER.comment("Search radius (in blocks) for the next target when an arrow bounces.").comment("箭矢弹射时搜索下一个目标的半径（方块距离）").defineInRange("arrowBounceSearchRange", 16.0, 0.0, 1024.0);
         ARROW_BOUNCE_DAMAGE_FALLOFF = BUILDER.comment("Damage multiplier applied per arrow bounce (0.8 = each bounce deals 80% of previous damage).").comment("每次箭矢弹射的伤害衰减系数（0.8 = 每次弹射造成上一次80%的伤害）").defineInRange("arrowBounceDamageFalloff", 0.8, 0.0, 1.0);
+        EXECUTE_THRESHOLD_BLACKLIST = BUILDER.comment("Entity types that can never be executed by the execute_threshold attribute, e.g. bosses. Uses entity type IDs like 'minecraft:ender_dragon'.").comment("永远无法被斩杀阈值属性处决的生物类型列表（如Boss）。使用实体类型ID，如 'minecraft:ender_dragon'").defineList("executeThresholdBlacklist", List.of(
+                "minecraft:ender_dragon",
+                "minecraft:wither"
+        ), o -> o instanceof String);
+
+        DISABLED_ATTRIBUTES = BUILDER.comment("Attributes that should be disabled. A disabled attribute always returns its default value, produces no effect, and is hidden from item tooltips.").comment("需要禁用的属性列表。被禁用的属性在获取时始终返回默认值、不产生任何效果，且不在物品提示（tooltip）中显示。").defineList("disabledAttributes", List.of(), o -> o instanceof String);
 
         BUILDER.pop();
         SPEC = BUILDER.build();
@@ -125,12 +140,24 @@ public class MAConfig {
         consideredMagicDamage = parseResourceLocations(CONSIDERED_MAGIC_DAMAGE.get());
         aggroEnabled = AGGRO_ENABLED.get();
         multishotSpreadPerPoint = MULTISHOT_SPREAD_PER_POINT.get();
+        multishotCloneInheritsBounce = MULTISHOT_CLONE_INHERITS_BOUNCE.get();
         healthDamagePlayerOnly = HEALTH_DAMAGE_PLAYER_ONLY.get();
         healthDamageOncePerTick = HEALTH_DAMAGE_ONCE_PER_TICK.get();
         damageSharingRange = DAMAGE_SHARING_RANGE.get();
         damageSharingDefaultWeight = DAMAGE_SHARING_DEFAULT_WEIGHT.get();
         arrowBounceSearchRange = ARROW_BOUNCE_SEARCH_RANGE.get();
         arrowBounceDamageFalloff = ARROW_BOUNCE_DAMAGE_FALLOFF.get();
+        executeThresholdBlacklist = parseResourceLocations(EXECUTE_THRESHOLD_BLACKLIST.get());
+        disabledAttributes = parseResourceLocations(DISABLED_ATTRIBUTES.get());
+    }
+
+    /**
+     * 判断属性是否被禁用
+     */
+    public static boolean isAttributeDisabled(Attribute attribute) {
+        if (disabledAttributes.isEmpty()) return false;
+        ResourceLocation key = ForgeRegistries.ATTRIBUTES.getKey(attribute);
+        return key != null && disabledAttributes.contains(key);
     }
 
     private static Set<ResourceLocation> parseResourceLocations(List<? extends String> list) {

@@ -16,7 +16,8 @@
     "PlayerMixin"
   ],
   "client": [
-    "LivingEntityRenderMixin"
+    "LivingEntityRenderMixin",
+    "LocalPlayerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

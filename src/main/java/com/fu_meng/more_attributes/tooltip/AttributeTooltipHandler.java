@@ -19,6 +19,8 @@ import net.minecraftforge.fml.common.Mod;
 import java.util.List;
 import java.util.Map;
 
+import static com.fu_meng.more_attributes.MAConfig.isAttributeDisabled;
+
 /**
  * Tooltip 处理器。
  * <p>
@@ -51,6 +53,12 @@ public class AttributeTooltipHandler {
             for (Map.Entry<Attribute, AttributeModifier> entry : attributes.entries()) {
                 Attribute attribute = entry.getKey();
                 AttributeModifier modifier = entry.getValue();
+
+                // 被禁用的属性：删除原版属性行，且不显示自定义格式行
+                if (isAttributeDisabled(attribute)) {
+                    removeAttributeLineAndGetIndex(tooltips, attribute);
+                    continue;
+                }
 
                 if (AttributeFormatter.isCustomFormattedAttribute(attribute)) {
                     int insertIndex = removeAttributeLineAndGetIndex(tooltips, attribute);
@@ -91,6 +99,7 @@ public class AttributeTooltipHandler {
          * <p>
          * 被跳过的 modifier 在 attributeslib 的合并逻辑执行前就被移除，因此不参与合并。
          * 这避免了两个 +90% 闪避被合并为 +180% 的问题（实际是乘法叠加）。
+         * 被禁用的属性同样被跳过，即完全不显示。
          */
         @SubscribeEvent
         public static void onGatherSkippedAttributeTooltips(GatherSkippedAttributeTooltipsEvent event) {
@@ -99,7 +108,7 @@ public class AttributeTooltipHandler {
                 Multimap<Attribute, AttributeModifier> attributes = stack.getAttributeModifiers(slot);
                 for (Map.Entry<Attribute, AttributeModifier> entry : attributes.entries()) {
                     Attribute attribute = entry.getKey();
-                    if (AttributeFormatter.isCustomFormattedAttribute(attribute)) {
+                    if (isAttributeDisabled(attribute) || AttributeFormatter.isCustomFormattedAttribute(attribute)) {
                         event.skipUUID(entry.getValue().getId());
                     }
                 }
@@ -124,6 +133,8 @@ public class AttributeTooltipHandler {
                 for (Map.Entry<Attribute, AttributeModifier> entry : attributes.entries()) {
                     Attribute attribute = entry.getKey();
                     AttributeModifier modifier = entry.getValue();
+                    // 被禁用的属性不显示
+                    if (isAttributeDisabled(attribute)) continue;
                     if (AttributeFormatter.isCustomFormattedAttribute(attribute)) {
                         MutableComponent formatted = AttributeFormatter.formatAttribute(attribute, modifier, flag);
                         if (formatted != null) {

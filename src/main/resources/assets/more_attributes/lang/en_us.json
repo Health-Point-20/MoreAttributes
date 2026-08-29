@@ -47,6 +47,7 @@
   "attribute.more_attributes.backstab_resistance": "Backstab Resistance",
   "attribute.more_attributes.aggro": "Aggro",
   "attribute.more_attributes.climbing_speed": "Climbing Speed",
+  "attribute.more_attributes.sneak_speed": "Sneak Speed",
   "attribute.more_attributes.experience_gain_ratio": "Experience Gain Ratio",
   "attribute.more_attributes.pickup_radius": "Pickup Radius",
   "attribute.more_attributes.multishot_amount": "Multishot Amount",

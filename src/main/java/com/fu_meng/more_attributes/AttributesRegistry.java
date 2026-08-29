@@ -155,6 +155,9 @@ public class AttributesRegistry {
     public static final RegistryObject<Attribute> CLIMBING_SPEED = ATTRIBUTES.register("climbing_speed",
             () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".climbing_speed", 1.0, 0.0, MAX).setSyncable(true));
 
+    public static final RegistryObject<Attribute> SNEAK_SPEED = ATTRIBUTES.register("sneak_speed",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".sneak_speed", 1.0, 0.0, MAX).setSyncable(true));
+
     public static final RegistryObject<Attribute> EXPERIENCE_GAIN_RATIO = ATTRIBUTES.register("experience_gain_ratio",
             () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".experience_gain_ratio", 1.0, 0.0, MAX).setSyncable(true));
 
@@ -260,7 +263,8 @@ public class AttributesRegistry {
                 COOLDOWN_REDUCTION,
                 AGGRO,
                 EXPERIENCE_GAIN_RATIO,
-                PICKUP_RADIUS
+                PICKUP_RADIUS,
+                SNEAK_SPEED
         );
 
         for (RegistryObject<Attribute> attribute : attributesForLiving) {

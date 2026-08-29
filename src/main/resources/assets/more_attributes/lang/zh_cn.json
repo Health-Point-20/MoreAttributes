@@ -46,6 +46,7 @@
   "attribute.more_attributes.backstab_resistance": "背刺伤害抵抗",
   "attribute.more_attributes.aggro": "仇恨值",
   "attribute.more_attributes.climbing_speed": "攀爬速度",
+  "attribute.more_attributes.sneak_speed": "潜行速度",
   "attribute.more_attributes.experience_gain_ratio": "经验获得比例",
   "attribute.more_attributes.pickup_radius": "拾取半径",
   "attribute.more_attributes.multishot_amount": "多重射击",

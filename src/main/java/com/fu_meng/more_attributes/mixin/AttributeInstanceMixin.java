@@ -16,6 +16,7 @@ import static com.fu_meng.more_attributes.AttributesRegistry.CRITICAL_DAMAGE;
 import static com.fu_meng.more_attributes.AttributesRegistry.getApotheosisCritChance;
 import static com.fu_meng.more_attributes.AttributesRegistry.getApotheosisCritDamage;
 import static com.fu_meng.more_attributes.MAConfig.ApotheosisCritCompatibility;
+import static com.fu_meng.more_attributes.MAConfig.isAttributeDisabled;
 
 import com.fu_meng.more_attributes.api.accessor.AttributeInstanceAccessor;
 
@@ -36,6 +37,12 @@ public class AttributeInstanceMixin implements AttributeInstanceAccessor {
 
     @Inject(method = "getValue", at = @At("RETURN"), cancellable = true)
     private void onGetValue(CallbackInfoReturnable<Double> cir) {
+        // 被禁用的属性：直接返回默认值
+        if (isAttributeDisabled(attribute)) {
+            cir.setReturnValue(attribute.getDefaultValue());
+            return;
+        }
+
         if (!ApotheosisCritCompatibility) return;
         if (more_attributes$map == null) return;
 
