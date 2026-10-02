@@ -27,7 +27,10 @@ public class AttributeFormatter {
             return formatIncomingDamageCap(itemValue, attributeName, modifier, flag);
         }
 
-        if (attribute.equals(EXECUTE_THRESHOLD.get())) {
+        if (attribute.equals(EXECUTE_THRESHOLD.get())
+                || attribute.equals(MELEE_EXECUTE_THRESHOLD.get())
+                || attribute.equals(RANGED_EXECUTE_THRESHOLD.get())
+                || attribute.equals(MAGIC_EXECUTE_THRESHOLD.get())) {
             return formatExecuteThreshold(itemValue, attributeName, modifier, flag);
         }
 
@@ -90,6 +93,7 @@ public class AttributeFormatter {
             MINING_SPEED.get(), HUNGER_RATE.get(),
             PERCENT_HEALTH_REGEN.get(), HEALING_EFFICIENCY.get(),
             MAGIC_DAMAGE_MULTIPLIER.get(), DAMAGE_MULTIPLIER.get(),
+            DROP_MULTIPLIER.get(),
             OXYGEN_CONSUMPTION_RATE.get(), SCALE.get(),
             BACKSTAB_DAMAGE.get(), BACKSTAB_RESISTANCE.get(),
             CLIMBING_SPEED.get(), EXPERIENCE_GAIN_RATIO.get(), SNEAK_SPEED.get(),
@@ -106,7 +110,10 @@ public class AttributeFormatter {
     public static boolean isCustomFormattedAttribute(Attribute attribute) {
         return isPercentageAttribute(attribute)
                 || attribute.equals(INCOMING_DAMAGE_CAP.get())
-                || attribute.equals(EXECUTE_THRESHOLD.get());
+                || attribute.equals(EXECUTE_THRESHOLD.get())
+                || attribute.equals(MELEE_EXECUTE_THRESHOLD.get())
+                || attribute.equals(RANGED_EXECUTE_THRESHOLD.get())
+                || attribute.equals(MAGIC_EXECUTE_THRESHOLD.get());
     }
 
     private static String getLocalizedAttributeName(Attribute attribute) {

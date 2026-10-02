@@ -1,73 +1,84 @@
 package com.fu_meng.more_attributes.handler;
 
+import com.fu_meng.more_attributes.MAConfig;
 import com.fu_meng.more_attributes.api.AttributeCalculationHelper;
 import com.fu_meng.more_attributes.api.HurtManager;
-import com.fu_meng.more_attributes.mixin.LivingEntityAccessor;
 import com.fu_meng.more_attributes.mixin.MeleeAttackGoalAccessor;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.StringTag;
-import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.sounds.SoundEvent;
 import net.minecraft.tags.DamageTypeTags;
-import net.minecraft.world.damagesource.*;
-import net.minecraft.world.entity.*;
+import net.minecraft.world.damagesource.CombatRules;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageType;
+import net.minecraft.world.damagesource.DamageTypes;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ExperienceOrb;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.projectile.AbstractArrow;
 import net.minecraft.world.entity.projectile.Projectile;
-import net.minecraft.world.item.*;
+import net.minecraft.world.item.BowItem;
+import net.minecraft.world.item.HoneyBottleItem;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.MilkBucketItem;
+import net.minecraft.world.item.PotionItem;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.fml.ModList;
-import net.minecraftforge.registries.ForgeRegistries;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
 import net.minecraftforge.common.ForgeMod;
 import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.event.entity.EntityJoinLevelEvent;
-import net.minecraftforge.event.entity.ProjectileImpactEvent;
-import net.minecraftforge.event.entity.living.*;
+import net.minecraftforge.event.entity.living.LivingAttackEvent;
+import net.minecraftforge.event.entity.living.LivingBreatheEvent;
+import net.minecraftforge.event.entity.living.LivingChangeTargetEvent;
+import net.minecraftforge.event.entity.living.LivingEvent;
+import net.minecraftforge.event.entity.living.LivingHealEvent;
+import net.minecraftforge.event.entity.living.LivingHurtEvent;
+import net.minecraftforge.event.entity.living.LivingDamageEvent;
+import net.minecraftforge.event.entity.living.LivingEntityUseItemEvent;
 import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerXpEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.registries.ForgeRegistries;
 
-import java.util.*;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static com.fu_meng.more_attributes.AttributesRegistry.*;
 import static com.fu_meng.more_attributes.MAConfig.*;
 import static com.fu_meng.more_attributes.MoreAttributesMod.LOGGER;
-import static com.fu_meng.more_attributes.MoreAttributesMod.queueServerWork;
 import static com.fu_meng.more_attributes.api.AttributeCalculationHelper.getHurtRecoveryAmount;
 import static com.fu_meng.more_attributes.api.HurtManager.*;
 
+/**
+ * 属性伤害主管线（LivingAttackEvent → LivingHurtEvent → LivingDamageEvent）
+ * 与杂项属性事件（再生/进食/氧气/挖掘/经验/仇恨/磁吸等）。
+ * <p>
+ * 弹射物属性见 {@link ProjectileAttributeHandler}，更强真伤见 {@link StrongTrueDamageHelper}，
+ * 掉落倍率见 {@link LootDropHandler}，共享战斗判定见 {@link CombatHelper}。
+ */
 @Mod.EventBusSubscriber
 public class AttributesHandler {
     private static final Map<UUID, Float> DAMAGE_RECORD = new ConcurrentHashMap<>();
     private static final Map<UUID, Long> HURT_RECORD = new ConcurrentHashMap<>();
-    // Map<弹射物, 受击者>
-    private static final Map<UUID, UUID> PROJECTILE_RECORD = new ConcurrentHashMap<>();
     // 记录攻击者本 tick 是否已触发过生命值相关伤害提升（每 tick 清空，条目生命周期严格为一个 tick）
     private static final Set<UUID> HEALTH_DAMAGE_TICK_RECORD = ConcurrentHashMap.newKeySet();
     // 记录玩家通过 AttackEntityEvent 触发的直接攻击目标 UUID，用于 healthDamagePlayerOnly 判定
     private static final Map<UUID, UUID> PLAYER_DIRECT_ATTACK_TARGET = new ConcurrentHashMap<>();
-
-    // 多重射击复制品标记键
-    private static final String MULTISHOT_CLONE_KEY = "more_attributes$multishot_clone";
-    // 多重射击已克隆标记：防止弹射物重复加入世界时（区块卸载重载）重复克隆
-    private static final String MULTISHOT_SPAWNED_KEY = "more_attributes$multishot_spawned";
 
     // 小数累积器 PersistentData 键（统一命名空间前缀，避免与其他 mod 冲突）
     private static final String REMAINING_INVINCIBLE_TIME_KEY = "more_attributes$remaining_invincible_time";
@@ -75,153 +86,48 @@ public class AttributesHandler {
     private static final String REMAINING_DRAW_SPEED_KEY = "more_attributes$remaining_draw_speed";
     private static final String REMAINING_OXYGEN_CONSUMPTION_KEY = "more_attributes$remaining_oxygen_consumption";
 
-    private static boolean isMultishotClone(Entity entity) {
-        return entity.getPersistentData().getBoolean(MULTISHOT_CLONE_KEY);
+    /** 判断伤害源是否属于魔法伤害（由 consideredMagicDamage 配置定义） */
+    private static boolean isMagicDamage(DamageSource source) {
+        return source.typeHolder()
+                .unwrapKey()
+                .map(key -> consideredMagicDamage.contains(key.location()))
+                .orElse(false);
     }
 
-    // 箭矢弹射 PersistentData 键
-    private static final String ARROW_BOUNCE_REMAINING_KEY = "more_attributes$bounce_remaining";
-    private static final String ARROW_BOUNCE_HIT_LIST_KEY = "more_attributes$bounce_hit_list";
-    private static final String ARROW_BOUNCE_CLONE_KEY = "more_attributes$bounce_clone";
-    // 箭矢属性已应用标记：防止箭矢重复加入世界时（区块卸载重载）重复应用箭矢属性
-    private static final String ARROW_ATTRS_APPLIED_KEY = "more_attributes$arrow_attrs_applied";
-
-    private static boolean isBounceClone(Entity entity) {
-        return entity.getPersistentData().getBoolean(ARROW_BOUNCE_CLONE_KEY);
-    }
-
-    /** 是否为已处理过的克隆弹射物（多重射击或弹射），需跳过属性重复应用与再次克隆 */
-    private static boolean isProcessedClone(Entity entity) {
-        return isMultishotClone(entity) || isBounceClone(entity);
-    }
-
-    private static void addBounceHitEntity(CompoundTag tag, UUID uuid) {
-        ListTag list = tag.getList(ARROW_BOUNCE_HIT_LIST_KEY, Tag.TAG_STRING);
-        list.add(StringTag.valueOf(uuid.toString()));
-        tag.put(ARROW_BOUNCE_HIT_LIST_KEY, list);
-    }
-
-    private static boolean isBounceHitEntity(CompoundTag tag, UUID uuid) {
-        ListTag list = tag.getList(ARROW_BOUNCE_HIT_LIST_KEY, Tag.TAG_STRING);
-        String uuidStr = uuid.toString();
-        for (int i = 0; i < list.size(); i++) {
-            if (uuidStr.equals(list.getString(i))) return true;
-        }
-        return false;
-    }
-
-    @SubscribeEvent
-    public static void onProjectileImpact(ProjectileImpactEvent event) {
-        Projectile projectile = event.getProjectile();
-
-        // 处理多重射击复制品的击中销毁
-        if (isMultishotClone(projectile)) {
-            HitResult hitResult = event.getRayTraceResult();
-            if (hitResult.getType() == HitResult.Type.BLOCK) {
-                // 击中方块：立即销毁，不触发 onHitBlock（防止箭矢插地、三叉戟滞留等）
-                event.setImpactResult(ProjectileImpactEvent.ImpactResult.STOP_AT_CURRENT_NO_DAMAGE);
-            } else if (hitResult.getType() == HitResult.Type.ENTITY) {
-                // 击中实体：允许造成伤害，下一 tick 销毁复制品（防止后续滞留/拾取/忠诚回归等副作用）
-                queueServerWork(() -> {
-                    if (!projectile.isRemoved()) {
-                        projectile.discard();
-                    }
-                });
-            }
-            return;
-        }
-
-        // 弹射链已命中过的实体不再被这支箭命中：
-        // 覆盖克隆箭从上一受害者体表射出时，下一 tick raycast 立即命中该受害者的边界情况（防止重复伤害与多消耗弹射次数）
-        if (projectile instanceof AbstractArrow bounceArrow) {
-            HitResult bounceHitResult = event.getRayTraceResult();
-            if (bounceHitResult instanceof EntityHitResult bounceEhr
-                    && bounceEhr.getEntity() instanceof LivingEntity bounceHitEntity
-                    && isBounceHitEntity(bounceArrow.getPersistentData(), bounceHitEntity.getUUID())) {
-                event.setImpactResult(ProjectileImpactEvent.ImpactResult.SKIP_ENTITY);
-                return;
-            }
-        }
-
-        // 被击中实体需从命中结果获取（event.getEntity() 返回的是弹射物自身，不能用作受害者）
-        LivingEntity victim = null;
-        if (event.getRayTraceResult() instanceof EntityHitResult hitEhr && hitEhr.getEntity() instanceof LivingEntity living) {
-            victim = living;
-        }
-        LivingEntity attacker = projectile.getOwner() instanceof LivingEntity living2 ? living2 : null;
-
-        // 闪避判定与命中记录仅服务端执行：ProjectileImpactEvent 双端触发，
-        // 客户端写入 PROJECTILE_RECORD 后无清理路径（LivingAttackEvent 不在客户端触发），会导致内存泄漏
-        boolean dodged = false;
-        if (victim != null && attacker != null && !projectile.level().isClientSide()) {
-            dodged = rollDodge(attacker, victim);
-            if (dodged) {
-                event.setImpactResult(ProjectileImpactEvent.ImpactResult.SKIP_ENTITY);
-            } else {
-                PROJECTILE_RECORD.put(projectile.getUUID(), victim.getUUID());
-            }
-        }
-
-        // 处理箭矢弹射：在闪避判定之后，被闪避（未实际命中）的箭不触发弹射
-        if (!dodged && projectile instanceof AbstractArrow arrow) {
-            handleArrowBounce(arrow, event);
-        }
-
-        // 弹射克隆箭命中后销毁（链式弹射已在上方完成），防止残留仅创造拾取的箭矢
-        // 被闪避的克隆箭不销毁：箭被躲开后继续飞行，后续撞墙/命中时自然销毁
-        if (!dodged && isBounceClone(projectile)) {
-            HitResult hitResult = event.getRayTraceResult();
-            if (hitResult.getType() == HitResult.Type.BLOCK) {
-                // 击中方块：立即销毁，不插地
-                event.setImpactResult(ProjectileImpactEvent.ImpactResult.STOP_AT_CURRENT_NO_DAMAGE);
-            } else if (hitResult.getType() == HitResult.Type.ENTITY) {
-                // 击中实体：允许造成伤害，下一 tick 销毁（防止穿透继续飞行与残留）
-                queueServerWork(() -> {
-                    if (!projectile.isRemoved()) {
-                        projectile.discard();
-                    }
-                });
-            }
-        }
+    /** 判断伤害源是否属于环境伤害类型（着火、摔落、爆炸、溺水等无来源实体的伤害） */
+    private static boolean isEnvironmentalDamage(DamageSource source) {
+        return source.is(DamageTypeTags.IS_FIRE)        // 着火、岩浆、岩浆块、营火等
+                || source.is(DamageTypeTags.IS_FALL)        // 摔落
+                || source.is(DamageTypeTags.IS_EXPLOSION)   // TNT、烟花、床/重生锚爆炸
+                || source.is(DamageTypeTags.IS_DROWNING)    // 溺水
+                || source.is(DamageTypeTags.IS_FREEZING)    // 细雪冻伤
+                || source.is(DamageTypeTags.IS_LIGHTNING)   // 雷击
+                || source.is(DamageTypes.CACTUS)            // 仙人掌
+                || source.is(DamageTypes.SWEET_BERRY_BUSH)  // 甜浆果丛
+                || source.is(DamageTypes.IN_WALL)           // 窒息
+                || source.is(DamageTypes.CRAMMING)          // 实体挤压
+                || source.is(DamageTypes.FALLING_BLOCK)     // 掉落方块
+                || source.is(DamageTypes.FALLING_ANVIL)     // 掉落铁砧
+                || source.is(DamageTypes.FALLING_STALACTITE) // 掉落钟乳石
+                || source.is(DamageTypes.FLY_INTO_WALL)     // 撞墙
+                || source.is(DamageTypes.FELL_OUT_OF_WORLD) // 虚空
+                || source.is(DamageTypes.OUTSIDE_BORDER);
     }
 
     /**
-     * 箭矢属性统一应用入口（穿透/伤害/速度/精准度/弹射次数）。
-     * 合并原先两个同优先级的 EntityJoinLevelEvent 处理器，保证属性应用顺序确定；
-     * 多重射击克隆在 LOW 优先级的 onMultishotProjectileJoin 中处理，确保克隆时继承的是已修改的弹射物状态。
+     * 伤害转化前的伤害记录（供 LivingDamageEvent 计算减免比例）。
+     * takeMax=true 时与已有记录取最大值（onHurt 中增伤后的伤害更高），否则直接覆盖（onAttack）。
      */
-    @SubscribeEvent
-    public static void onArrowJoinLevel(EntityJoinLevelEvent event) {
-        // 仅服务端处理：客户端箭矢不携带 PersistentData（克隆标记无法同步，isProcessedClone 恒为 false），
-        // 且箭矢属性均为服务端结算，客户端重复应用会造成弹射箭视觉速度与实际不符
-        if (event.getLevel().isClientSide()) return;
-        if (!(event.getEntity() instanceof AbstractArrow arrow)) return;
-        if (isProcessedClone(arrow)) return; // 跳过克隆弹射物（已从原弹射物继承属性）
-        if (!(arrow.getOwner() instanceof LivingEntity shooter)) return;
-        CompoundTag arrowTag = arrow.getPersistentData();
-        if (arrowTag.getBoolean(ARROW_ATTRS_APPLIED_KEY)) return; // 已应用过（区块卸载重载后重新加入世界）
-        arrowTag.putBoolean(ARROW_ATTRS_APPLIED_KEY, true);
-
-        // 穿透
-        double pierceCount = shooter.getAttributeValue(ARROW_PIERCE.get());
-        arrow.setPierceLevel((byte) (arrow.getPierceLevel() + pierceCount));
-
-        // 伤害与速度
-        double arrowDamage = shooter.getAttributeValue(ARROW_DAMAGE.get());
-        double arrowVelocity = shooter.getAttributeValue(ARROW_VELOCITY.get());
-        arrow.setBaseDamage(arrow.getBaseDamage() * arrowDamage);
-        arrow.setDeltaMovement(arrow.getDeltaMovement().scale(arrowVelocity));
-
-        // 箭矢精准度：负值时对原箭矢施加随机角度偏移
-        double arrowAccuracy = shooter.getAttributeValue(ARROW_ACCURACY.get());
-        if (arrowAccuracy < 0) {
-            applyAccuracyOffset(arrow, arrowAccuracy);
-        }
-
-        // 箭矢弹射：写入剩余弹射次数（衰减系数为全局配置，弹射时直接读取，不冗余存储）
-        double arrowBounce = shooter.getAttributeValue(ARROW_BOUNCE.get());
-        if (arrowBounce > 0) {
-            arrowTag.putInt(ARROW_BOUNCE_REMAINING_KEY, (int) arrowBounce);
+    private static void recordDamageForConversion(LivingEntity attacker, float damage, boolean takeMax) {
+        if (isOnDealExtraDamage()) return;
+        double trueDamageRatio = attacker.getAttributeValue(TRUE_DAMAGE_RATIO.get());
+        double magicDamageRatio = attacker.getAttributeValue(MAGIC_DAMAGE_RATIO.get());
+        if (trueDamageRatio <= 0 && magicDamageRatio <= 0) return;
+        if (takeMax) {
+            float damageRecord = Math.max(DAMAGE_RECORD.getOrDefault(attacker.getUUID(), 0f), damage);
+            DAMAGE_RECORD.put(attacker.getUUID(), damageRecord);
+        } else {
+            DAMAGE_RECORD.put(attacker.getUUID(), damage);
         }
     }
 
@@ -248,15 +154,16 @@ public class AttributesHandler {
 
         // 弹射物已在 ProjectileImpactEvent 中处理过闪避判定，此处不再重复处理
         Entity directEntity = source.getDirectEntity();
-        if (directEntity != null && PROJECTILE_RECORD.containsKey(directEntity.getUUID())) {
+        if (directEntity != null && CombatHelper.PROJECTILE_RECORD.containsKey(directEntity.getUUID())) {
             // 移除已处理的弹射物记录，避免内存泄漏
-            PROJECTILE_RECORD.remove(directEntity.getUUID());
+            CombatHelper.PROJECTILE_RECORD.remove(directEntity.getUUID());
             return;
         }
 
         // 近战及其他攻击：进行闪避判定
         try {
-            if (rollDodge(attacker, victim)) {
+            if (CombatHelper.rollDodge(attacker, victim)) {
+                CombatHelper.DODGED_MELEE.put(victim.getUUID(), attacker.getUUID());
                 event.setCanceled(true);
                 return; // 已闪避，不再进行伤害记录
             }
@@ -265,13 +172,7 @@ public class AttributesHandler {
         }
 
         // 伤害转化前的伤害记录
-        if (!isOnDealExtraDamage()) {
-            double trueDamageRatio = attacker.getAttributeValue(TRUE_DAMAGE_RATIO.get());
-            double magicDamageRatio = attacker.getAttributeValue(MAGIC_DAMAGE_RATIO.get());
-            if (trueDamageRatio > 0 || magicDamageRatio > 0) {
-                DAMAGE_RECORD.put(attacker.getUUID(), damage);
-            }
-        }
+        recordDamageForConversion(attacker, damage, false);
     }
 
     @SubscribeEvent
@@ -286,12 +187,6 @@ public class AttributesHandler {
         if (invincibleTimeRate > 0) {
             victim.invulnerableTime = (int) (victim.invulnerableTime * invincibleTimeRate);
         }
-
-        // 判断伤害源是否属于魔法
-        boolean isMagicDamage = source.typeHolder()
-                .unwrapKey()
-                .map(key -> consideredMagicDamage.contains(key.location()))
-                .orElse(false);
 
         // 处理受击恢复属性
         float recoveryAmount = getHurtRecoveryAmount(victim);
@@ -320,11 +215,9 @@ public class AttributesHandler {
             }
 
             // 处理伤害倍率属性
-            float multiplier;
-            double damageMultiplier = attacker.getAttributeValue(DAMAGE_MULTIPLIER.get());
-            multiplier = (float) damageMultiplier;
+            float multiplier = (float) attacker.getAttributeValue(DAMAGE_MULTIPLIER.get());
             // 魔法伤害倍率
-            if (isMagicDamage) {
+            if (isMagicDamage(source)) {
                 double magicDamageMultiplier = attacker.getAttributeValue(MAGIC_DAMAGE_MULTIPLIER.get()) - 1;
                 multiplier += (float) magicDamageMultiplier;
             }
@@ -376,7 +269,7 @@ public class AttributesHandler {
                 AABB box = victim.getBoundingBox().inflate(meleeSplashRange);
 
                 attacker.level().getEntitiesOfClass(LivingEntity.class, box, entity ->
-                        entity != attacker && entity != victim && !isPartner(attacker, entity)
+                        entity != attacker && entity != victim && !CombatHelper.isPartner(attacker, entity)
                                 && (entity instanceof Enemy || entity.getMobType() == victim.getMobType()))
                         .forEach(entity -> extraHurt(entity, source, splashDamage));
             }
@@ -412,7 +305,7 @@ public class AttributesHandler {
             damage *= (float) AttributeCalculationHelper.getPhysicalDamageFactor(victim);
         }
 
-        if (isMagicDamage) {
+        if (isMagicDamage(source)) {
             // 魔法伤害减免
             damage *= (float) AttributeCalculationHelper.getMagicDamageFactor(victim);
 
@@ -423,24 +316,7 @@ public class AttributesHandler {
         }
 
         // 环境伤害减免
-        boolean isEnvironmental = source.is(DamageTypeTags.IS_FIRE)       // 着火、岩浆、岩浆块、营火等
-                || source.is(DamageTypeTags.IS_FALL)       // 摔落
-                || source.is(DamageTypeTags.IS_EXPLOSION)  // TNT、烟花、床/重生锚爆炸
-                || source.is(DamageTypeTags.IS_DROWNING)   // 溺水
-                || source.is(DamageTypeTags.IS_FREEZING)   // 细雪冻伤
-                || source.is(DamageTypeTags.IS_LIGHTNING)  // 雷击
-                || source.is(DamageTypes.CACTUS)           // 仙人掌
-                || source.is(DamageTypes.SWEET_BERRY_BUSH) // 甜浆果丛
-                || source.is(DamageTypes.IN_WALL)          // 窒息
-                || source.is(DamageTypes.CRAMMING)         // 实体挤压
-                || source.is(DamageTypes.FALLING_BLOCK)    // 掉落方块
-                || source.is(DamageTypes.FALLING_ANVIL)    // 掉落铁砧
-                || source.is(DamageTypes.FALLING_STALACTITE)// 掉落钟乳石
-                || source.is(DamageTypes.FLY_INTO_WALL)     // 撞墙
-                || source.is(DamageTypes.FELL_OUT_OF_WORLD) //虚空
-                || source.is(DamageTypes.OUTSIDE_BORDER);
-
-        if (isEnvironmental && source.getEntity() == null) {
+        if (isEnvironmentalDamage(source) && source.getEntity() == null) {
             damage *= (float) AttributeCalculationHelper.getEnvironmentalDamageFactor(victim);
         }
 
@@ -450,46 +326,10 @@ public class AttributesHandler {
         // 应用修改后的伤害
         event.setAmount(damage);
 
-        // 伤害转化前的伤害记录
-        if (attacker != null && !isOnDealExtraDamage()) {
-            double trueDamageRatio = attacker.getAttributeValue(TRUE_DAMAGE_RATIO.get());
-            double magicDamageRatio = attacker.getAttributeValue(MAGIC_DAMAGE_RATIO.get());
-            if (trueDamageRatio > 0 || magicDamageRatio > 0) {
-                float damageRecord = Math.max(DAMAGE_RECORD.getOrDefault(attacker.getUUID(), 0f), damage);
-                DAMAGE_RECORD.put(attacker.getUUID(), damageRecord);
-            }
+        // 伤害转化前的伤害记录（增伤后的更高值）
+        if (attacker != null) {
+            recordDamageForConversion(attacker, damage, true);
         }
-    }
-
-    private static boolean isPartner(LivingEntity entity, LivingEntity target) {
-        // 判断是否有主仆关系
-        if (entity instanceof OwnableEntity ownable && ownable.getOwner() == target
-                || target instanceof OwnableEntity ownableTarget && ownableTarget.getOwner() == entity) {
-            return true;
-        }
-
-        // 团队关系
-        if (target.getTeam() != null && target.getTeam().isAlliedTo(entity.getTeam())) {
-            return true;
-        }
-
-        // 种族关系
-        return entity.getType() == target.getType();
-    }
-
-    /**
-     * 闪避判定：按最终命中概率掷骰，未命中返回 true 并向玩家攻击者提示闪避。
-     * 供 ProjectileImpactEvent（弹射物）与 LivingAttackEvent（近战等）共用。
-     */
-    private static boolean rollDodge(LivingEntity attacker, LivingEntity victim) {
-        double finalHitProb = AttributeCalculationHelper.getFinalHitProbability(attacker, victim);
-        if (victim.getRandom().nextFloat() >= finalHitProb) {
-            if (attacker instanceof Player player) {
-                player.displayClientMessage(Component.translatable("more_attributes.hit_miss", victim.getDisplayName()), true);
-            }
-            return true;
-        }
-        return false;
     }
 
     /**
@@ -506,7 +346,7 @@ public class AttributesHandler {
         AABB box = victim.getBoundingBox().inflate(damageSharingRange);
         // 只有属性值非默认（>0）的友方才会分摊别人的伤害（坦克定位）
         List<LivingEntity> sharers = victim.level().getEntitiesOfClass(LivingEntity.class, box,
-                entity -> entity != victim && entity.isAlive() && isPartner(victim, entity)
+                entity -> entity != victim && entity.isAlive() && CombatHelper.isPartner(victim, entity)
                         && AttributeCalculationHelper.getRawAttributeValue(entity, DAMAGE_SHARING.get()) > 0.0
                         && (attacker == null || entity != attacker));
         if (sharers.isEmpty()) return damage;
@@ -546,83 +386,140 @@ public class AttributesHandler {
             event.setAmount(incomingDamageCapValue);
         }
 
+        // 处理固定减伤：按固定值减少受到的伤害，减后不低于配置的最低保留值
+        // 默认不作用于环境伤害；只减不增，伤害低于最低保留值时原样保留
+        double flatReduction = victim.getAttributeValue(FLAT_DAMAGE_REDUCTION.get());
+        if (flatReduction > 0.0 && (flatDamageReductionAffectsEnvironmental || !isEnvironmentalDamage(event.getSource()))) {
+            float reduced = (float) Math.max(flatDamageReductionMinDamage, event.getAmount() - flatReduction);
+            if (reduced < event.getAmount()) {
+                event.setAmount(reduced);
+            }
+        }
+
         // 处理斩杀阈值：攻击者的斩杀阈值属性，受害者当前血量低于阈值时直接处决
         // executeThresholdBlacklist 配置中的生物类型（默认为原版Boss）免疫斩杀
         if (attacker != null) {
             AttributeInstance executeThresholdAttr = attacker.getAttribute(EXECUTE_THRESHOLD.get());
             double executeThreshold = AttributeCalculationHelper.getExecuteThresholdValue(executeThresholdAttr, maxHealth);
+
+            // 根据伤害类型叠加对应的专项斩杀阈值，与生命窃取的分类型拆分类似
+            DamageSource source = event.getSource();
+            boolean isMagic = isMagicDamage(source);
+            boolean isRangedDamage = source.getDirectEntity() instanceof Projectile;
+            boolean isMeleeDamage = attacker == source.getDirectEntity()
+                    && attacker.distanceTo(victim) <= getAttackReach(attacker, victim);
+
+            double specificExecuteThreshold;
+            if (isMagic) {
+                specificExecuteThreshold = AttributeCalculationHelper.getExecuteThresholdValue(
+                        attacker.getAttribute(MAGIC_EXECUTE_THRESHOLD.get()), maxHealth);
+            } else if (isRangedDamage) {
+                specificExecuteThreshold = AttributeCalculationHelper.getExecuteThresholdValue(
+                        attacker.getAttribute(RANGED_EXECUTE_THRESHOLD.get()), maxHealth);
+            } else if (isMeleeDamage) {
+                specificExecuteThreshold = AttributeCalculationHelper.getExecuteThresholdValue(
+                        attacker.getAttribute(MELEE_EXECUTE_THRESHOLD.get()), maxHealth);
+            } else {
+                specificExecuteThreshold = 0;
+            }
+            executeThreshold += specificExecuteThreshold;
+
             if (executeThreshold > 0 && victim.getHealth() > 0 && victim.getHealth() <= executeThreshold
                     && !executeThresholdBlacklist.contains(ForgeRegistries.ENTITY_TYPES.getKey(victim.getType()))) {
-                DamageSource executeSource = event.getSource();
-                victim.die(executeSource);
-                victim.setHealth(0.0F);
                 if (attacker instanceof Player player) {
                     player.displayClientMessage(Component.translatable("more_attributes.execute_triggered"), true);
                 }
+                if (!MAConfig.trueDamageMode.bypassesPipeline()) {
+                    // 档 0（管线内）：并入事件伤害，不取消事件，
+                    // 图腾、死亡事件与掉落全部交回原版处理（等效斩杀）
+                    event.setAmount(victim.getHealth());
+                    return;
+                }
+                // 档 1/2/3：复用真伤的强制扣血路径：覆写了 setHealth 的自定义 Boss 也能被处决
+                // 特别处理自定义npc（不调用 die），避免出现双倍掉落
+                boolean isCustomNpc = EntityType.getKey(victim.getType()).getNamespace().equals("customnpcs");
+                StrongTrueDamageHelper.applyStrongerTrueDamage(victim, victim.getHealth(), event.getSource(), !isCustomNpc);
                 event.setCanceled(true);
                 return;
             }
         }
 
+        // 处理伤害转化与额外真伤/额外魔法伤害
+        if (attacker != null && !isOnDealExtraDamage()) {
+            // 需要绕过伤害管线强制扣血的真伤总量（转化真伤 + 额外真伤），合并为一次结算
+            float directTrueDamage = 0.0F;
 
-        // 处理伤害转化
-        if (attacker != null) {
-            if (!isOnDealExtraDamage()){
-                double trueDamageRatio = attacker.getAttributeValue(TRUE_DAMAGE_RATIO.get());
-                double magicDamageRatio = attacker.getAttributeValue(MAGIC_DAMAGE_RATIO.get());
-                if (trueDamageRatio > 0 || magicDamageRatio > 0) {
-                    float damageRecord = DAMAGE_RECORD.getOrDefault(attacker.getUUID(), 0f);
-                    float reducedDamageRatio = damageRecord > 0 ? damage / damageRecord : 0;
-                    float trueDamage = Math.min((float) (damageRecord * trueDamageRatio), damageRecord);
-                    float magicDamage = (float) Math.min(((damageRecord - trueDamage) * magicDamageRatio), damageRecord - trueDamage);
+            double trueDamageRatio = attacker.getAttributeValue(TRUE_DAMAGE_RATIO.get());
+            double magicDamageRatio = attacker.getAttributeValue(MAGIC_DAMAGE_RATIO.get());
+            if (trueDamageRatio > 0 || magicDamageRatio > 0) {
+                float damageRecord = DAMAGE_RECORD.getOrDefault(attacker.getUUID(), 0f);
+                float reducedDamageRatio = damageRecord > 0 ? damage / damageRecord : 0;
+                float trueDamage = Math.min((float) (damageRecord * trueDamageRatio), damageRecord);
+                float magicDamage = (float) Math.min(((damageRecord - trueDamage) * magicDamageRatio), damageRecord - trueDamage);
 
-                    if (magicDamage > 0) {
-                        DamageSource magicSource = HurtManager.getDamageSource(DamageTypes.MAGIC, attacker);
-                        HurtManager.extraHurt(victim, magicSource, magicDamage);
-                    }
-
-                    float finalDamage = (damageRecord - trueDamage - magicDamage) * reducedDamageRatio + trueDamage;
-
-                    DAMAGE_RECORD.remove(attacker.getUUID());
-                    event.setAmount(finalDamage);
-                    if (strongerTrueDamage && trueDamage > 0) {
-                        float remainingHealth = victim.getHealth() - trueDamage;
-                        queueServerWork(() -> {
-                            if (victim.getHealth() >= remainingHealth) {
-                                victim.setHealth(remainingHealth);
-                            }
-                        });
-                    }
-                }
-
-                // 处理额外真实伤害
-                double extraTrueDamage = attacker.getAttributeValue(EXTRA_TRUE_DAMAGE.get());
-                event.setAmount(event.getAmount() + (float) extraTrueDamage);
-
-                // 处理额外魔法伤害
-                double extraMagicDamage = attacker.getAttributeValue(EXTRA_MAGIC_DAMAGE.get());
-                if (extraMagicDamage > 0) {
+                if (magicDamage > 0) {
                     DamageSource magicSource = HurtManager.getDamageSource(DamageTypes.MAGIC, attacker);
-                    HurtManager.extraHurt(victim, magicSource, (float) extraMagicDamage);
+                    HurtManager.extraHurt(victim, magicSource, magicDamage);
                 }
+
+                float finalDamage = (damageRecord - trueDamage - magicDamage) * reducedDamageRatio + trueDamage;
+
+                DAMAGE_RECORD.remove(attacker.getUUID());
+
+                if (MAConfig.trueDamageMode.bypassesPipeline() && trueDamage > 0) {
+                    // 真伤从伤害管线中移除以免重复结算，改由下方强制扣血统一结算
+                    finalDamage -= trueDamage;
+                    directTrueDamage += trueDamage;
+                }
+                event.setAmount(finalDamage);
             }
 
-            // 处理生命窃取
+            // 玩家近战的额外伤害按攻击冷却缩减（与原版 Player.attack 的冷却缩减公式一致）；
+            // 此时 resetAttackStrengthTicker 尚未执行（Forge 将其移至 attack() 末尾），
+            // 可直接读到本次挥击的真实冷却。弹射物不消耗攻击冷却，
+            // 远程路径（directEntity 为弹射物）维持满额。
+            // 伤害转化类属性基于已造成伤害的占比，基础伤害已被原版缩减，无需重复处理
+            float extraDamageFactor = attacker == event.getSource().getDirectEntity()
+                    ? CombatHelper.getMeleeCooldownFactor(attacker) : 1.0F;
+
+            // 处理额外真实伤害
+            double extraTrueDamage = attacker.getAttributeValue(EXTRA_TRUE_DAMAGE.get()) * extraDamageFactor;
+            // 本次近战的伤害事件已正常触发，消费兜底登记，避免 tick 结束时重复结算
+            StrongTrueDamageHelper.consumePendingMeleeTrueDamage(victim, attacker);
+            if (MAConfig.trueDamageMode.bypassesPipeline()) {
+                directTrueDamage += (float) extraTrueDamage;
+            } else {
+                event.setAmount(event.getAmount() + (float) extraTrueDamage);
+            }
+
+            // 真伤独立结算（按档位决定强制写入深度与是否绕过死亡保护）
+            if (directTrueDamage > 0) {
+                StrongTrueDamageHelper.applyStrongerTrueDamage(victim, directTrueDamage, event.getSource());
+            }
+
+            // 处理额外魔法伤害
+            double extraMagicDamage = attacker.getAttributeValue(EXTRA_MAGIC_DAMAGE.get()) * extraDamageFactor;
+            if (extraMagicDamage > 0) {
+                DamageSource magicSource = HurtManager.getDamageSource(DamageTypes.MAGIC, attacker);
+                HurtManager.extraHurt(victim, magicSource, (float) extraMagicDamage);
+            }
+        }
+
+        // 处理生命窃取
+        // 事件被其他处理器取消时伤害并未实际发生，不再吸血（真伤部分仍照常结算）
+        if (attacker != null && !event.isCanceled()) {
             float newDamage = event.getAmount();
             double lifeSteal = attacker.getAttributeValue(LIFE_STEAL.get());
 
             // 根据伤害类型应用对应的专项生命窃取
             DamageSource source = event.getSource();
-            boolean isMagicDamage = source.typeHolder()
-                    .unwrapKey()
-                    .map(key -> consideredMagicDamage.contains(key.location()))
-                    .orElse(false);
+            boolean isMagic = isMagicDamage(source);
             boolean isRangedDamage = source.getDirectEntity() instanceof Projectile;
             boolean isMeleeDamage = attacker == source.getDirectEntity()
                     && attacker.distanceTo(victim) <= getAttackReach(attacker, victim);
 
             double specificLifeSteal;
-            if (isMagicDamage) {
+            if (isMagic) {
                 specificLifeSteal = attacker.getAttributeValue(MAGIC_LIFE_STEAL.get());
             } else if (isRangedDamage) {
                 specificLifeSteal = attacker.getAttributeValue(RANGED_LIFE_STEAL.get());
@@ -668,40 +565,14 @@ public class AttributesHandler {
 
     @SubscribeEvent(receiveCanceled = true)
     public static void onAttackEntity(AttackEntityEvent event) {
-        Player attacker = event.getEntity();
-        LivingEntity victim = event.getTarget() instanceof LivingEntity living ? living : null;
-
-        if (attacker == null || victim == null) return;
-
         // 记录玩家本次直接攻击的目标，用于 onHurt 中 healthDamagePlayerOnly 判定
         // 仅 AttackEntityEvent 触发时记录（玩家左键攻击实体），怪物近战与弹射物不会进入此处
-        PLAYER_DIRECT_ATTACK_TARGET.put(attacker.getUUID(), victim.getUUID());
-
-        if (!strongerTrueDamage) return;
-
-        if (victim.isInvulnerable() || victim instanceof Player playerVictim && playerVictim.getAbilities().invulnerable) {
-            double trueDamage = attacker.getAttributeValue(EXTRA_TRUE_DAMAGE.get());
-            LivingEntityAccessor victimMixin = (LivingEntityAccessor) victim;
-            DamageSource damageSource = attacker.damageSources().playerAttack(attacker);
-            if (victim.getHealth() - trueDamage > 0) {
-                victim.setHealth((float) (victim.getHealth() - trueDamage));
-                victimMixin.playHurtSound(damageSource);
-                victim.hurtTime = 20;
-                victim.hurtMarked = true;
-            } else {
-                victim.die(damageSource);
-                SoundEvent soundevent = victimMixin.getDeathSound();
-                if (soundevent != null) {
-                    victim.playSound(soundevent, victimMixin.getSoundVolume(), (victim.getRandom().nextFloat() - victim.getRandom().nextFloat()) * 0.2F + 1.0F);
-                }
-                queueServerWork(() -> {
-                    if (!victim.isDeadOrDying()) {
-                        victim.setHealth(Float.NEGATIVE_INFINITY);
-                        victim.remove(Entity.RemovalReason.KILLED);
-                    }
-                });
-            }
+        if (event.getTarget() instanceof LivingEntity victim) {
+            PLAYER_DIRECT_ATTACK_TARGET.put(event.getEntity().getUUID(), victim.getUUID());
         }
+        // 记录本次挥击的攻击冷却比例：伤害事件期间仍可实时读取（Forge 将 resetAttackStrengthTicker
+        // 移至 attack() 末尾），但 tick 末兜底结算时 reset 已发生，需以此记录回溯
+        CombatHelper.ATTACK_STRENGTH_RECORD.put(event.getEntity().getUUID(), event.getEntity().getAttackStrengthScale(0.5F));
     }
 
     @SubscribeEvent
@@ -769,34 +640,33 @@ public class AttributesHandler {
             double radius = player.getAttributeValue(PICKUP_RADIUS.get());
             if (radius > 0) {
                 AABB box = new AABB(player.getOnPos()).inflate(radius);
-                player.level().getEntitiesOfClass(ItemEntity.class, box, item -> true).forEach(item -> {
-                    if (item.isRemoved()) return;
-                    item.addDeltaMovement(
-                            player.position().subtract(item.getX(), item.getY(), item.getZ()).normalize().scale(0.05F).add(0, 0.04F, 0)
-                    );
-                    item.move(MoverType.SELF, item.getDeltaMovement());
-                });
-                player.level().getEntitiesOfClass(ExperienceOrb.class, box, orb -> true).forEach(orb -> {
-                    if (orb.isRemoved()) return;
-                    orb.addDeltaMovement(
-                            player.position().subtract(orb.getX(), orb.getY(), orb.getZ()).normalize().scale(0.05F).add(0, 0.04F, 0)
-                    );
-                    orb.move(MoverType.SELF, orb.getDeltaMovement());
-                });
+                player.level().getEntitiesOfClass(ItemEntity.class, box, item -> true)
+                        .forEach(item -> pullTowards(player, item));
+                player.level().getEntitiesOfClass(ExperienceOrb.class, box, orb -> true)
+                        .forEach(orb -> pullTowards(player, orb));
             }
         }
     }
 
+    /** 将掉落物/经验球向玩家牵引（磁吸效果） */
+    private static void pullTowards(Player player, Entity entity) {
+        if (entity.isRemoved()) return;
+        entity.addDeltaMovement(
+                player.position().subtract(entity.getX(), entity.getY(), entity.getZ()).normalize().scale(0.05F).add(0, 0.04F, 0)
+        );
+        entity.move(MoverType.SELF, entity.getDeltaMovement());
+    }
+
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase == TickEvent.Phase.START) {
-            AttributeCalculationHelper.clearStrengthCache();
-            // 伤害记录在同 tick 的 Attack→Hurt→Damage 链路内写入并消费；
-            // tick 起始清空可兜底攻击被其他处理器取消导致 LivingDamageEvent 未触发的残留，防止内存驻留
-            DAMAGE_RECORD.clear();
-            HEALTH_DAMAGE_TICK_RECORD.clear();
-            PLAYER_DIRECT_ATTACK_TARGET.clear();
-        }
+        if (event.phase != TickEvent.Phase.START) return;
+        AttributeCalculationHelper.clearStrengthCache();
+        // 伤害记录在同 tick 的 Attack→Hurt→Damage 链路内写入并消费；
+        // tick 起始清空可兜底攻击被其他处理器取消导致 LivingDamageEvent 未触发的残留，防止内存驻留
+        DAMAGE_RECORD.clear();
+        HEALTH_DAMAGE_TICK_RECORD.clear();
+        PLAYER_DIRECT_ATTACK_TARGET.clear();
+        CombatHelper.ATTACK_STRENGTH_RECORD.clear();
     }
 
     @SubscribeEvent
@@ -805,48 +675,29 @@ public class AttributesHandler {
         Item item = event.getItem().getItem();
         CompoundTag tag = entity.getPersistentData();
 
-        // 处理进食速度属性
+        // 处理进食速度属性（可食用或可饮用）
         AttributeInstance eatingSpeed = entity.getAttribute(EATING_SPEED.get());
-        if (eatingSpeed != null) {
-            // 判断物品是否可食用或可饮用
-            boolean isEdible = item.isEdible();
-            boolean isDrinkable = item instanceof PotionItem ||
-                    item instanceof HoneyBottleItem ||
-                    item instanceof MilkBucketItem;
-
-            // 计算新的使用时间
-            if (isEdible || isDrinkable) {
-                double eatingSpeedValue = eatingSpeed.getValue() - 1;
-                double remainingEatingSpeed = tag.getDouble(REMAINING_EATING_SPEED_KEY);
-
-                double totalSpeed = eatingSpeedValue + remainingEatingSpeed;
-                int newDuration = event.getDuration() - (int) totalSpeed;
-                remainingEatingSpeed = totalSpeed - (int) totalSpeed;
-                tag.putDouble(REMAINING_EATING_SPEED_KEY, remainingEatingSpeed);
-
-                event.setDuration(newDuration);
-            }
+        if (eatingSpeed != null && (item.isEdible() || item instanceof PotionItem
+                || item instanceof HoneyBottleItem || item instanceof MilkBucketItem)) {
+            event.setDuration(shortenUseDuration(event.getDuration(), eatingSpeed.getValue() - 1, tag, REMAINING_EATING_SPEED_KEY));
         }
 
         // 处理拉弓速度属性
         AttributeInstance drawSpeed = entity.getAttribute(DRAW_SPEED.get());
-        if (drawSpeed != null) {
-            // 判断物品是否为弓
-            boolean isBow = item instanceof BowItem;
-
-            // 计算新的使用时间
-            if (isBow) {
-                double drawingSpeedValue = drawSpeed.getValue() - 1;
-                double remainingDrawSpeed = tag.getDouble(REMAINING_DRAW_SPEED_KEY);
-
-                double totalSpeed = drawingSpeedValue + remainingDrawSpeed;
-                int newDuration = event.getDuration() - (int) totalSpeed;
-                remainingDrawSpeed = totalSpeed - (int) totalSpeed;
-                tag.putDouble(REMAINING_DRAW_SPEED_KEY, remainingDrawSpeed);
-
-                event.setDuration(newDuration);
-            }
+        if (drawSpeed != null && item instanceof BowItem) {
+            event.setDuration(shortenUseDuration(event.getDuration(), drawSpeed.getValue() - 1, tag, REMAINING_DRAW_SPEED_KEY));
         }
+    }
+
+    /** 按速度值缩短使用时间，小数部分累积到下次结算（速度值 = 属性值 - 1，负值减慢） */
+    private static int shortenUseDuration(int duration, double speedValue, CompoundTag tag, String remainingKey) {
+        double remaining = tag.getDouble(remainingKey);
+
+        double total = speedValue + remaining;
+        int newDuration = duration - (int) total;
+        tag.putDouble(remainingKey, total - (int) total);
+
+        return newDuration;
     }
 
     @SubscribeEvent
@@ -857,238 +708,6 @@ public class AttributesHandler {
         // 处理挖掘速度属性
         float newSpeed = originalSpeed * (float) player.getAttributeValue(MINING_SPEED.get());
         event.setNewSpeed(newSpeed);
-    }
-
-    /**
-     * 多重射击：弹射物加入世界时，根据发射者的 MULTISHOT_AMOUNT 属性克隆额外弹射物。
-     * 使用 LOW 优先级确保在 ARROW_DAMAGE/VELOCITY/PIERCE 等属性处理之后执行，
-     * 使复制品能从已修改的原弹射物状态继承正确数值。
-     */
-    @SubscribeEvent(priority = EventPriority.LOW)
-    public static void onMultishotProjectileJoin(EntityJoinLevelEvent event) {
-        if (event.getLevel().isClientSide()) return;
-        if (!(event.getEntity() instanceof Projectile projectile)) return;
-        if (isProcessedClone(projectile)) return;
-
-        Entity owner = projectile.getOwner();
-        if (!(owner instanceof LivingEntity shooter)) return;
-
-        double multishotAmount = shooter.getAttributeValue(MULTISHOT_AMOUNT.get());
-        int extraCount = (int) multishotAmount;
-        if (extraCount <= 0) return;
-
-        // 已克隆过的不再重复克隆
-        CompoundTag projectileTag = projectile.getPersistentData();
-        if (projectileTag.getBoolean(MULTISHOT_SPAWNED_KEY)) return;
-        projectileTag.putBoolean(MULTISHOT_SPAWNED_KEY, true);
-
-        spawnMultishotClones(projectile, shooter, extraCount);
-    }
-
-    /**
-     * 以扇形分布克隆额外弹射物。
-     * 采用交替左右分布：i=0→左侧第1档，i=1→右侧第1档，i=2→左侧第2档，依此类推。
-     * 每档间隔 multishotSpreadPerPoint 度（默认10°，与原版弩多重射击一致）。
-     * 方向旋转使用四元数绕发射者上方向轴，与原版 CrossbowItem 实现一致。
-     */
-    private static void spawnMultishotClones(Projectile original, LivingEntity shooter, int extraCount) {
-        Vec3 originalMotion = original.getDeltaMovement();
-        double speed = originalMotion.length();
-        if (speed < 1.0E-6) return;
-
-        Vec3 dir = originalMotion.normalize();
-        Vec3 up = shooter.getUpVector(1.0F);
-
-        double arrowAccuracy = shooter.getAttributeValue(ARROW_ACCURACY.get());
-        // 正值精准度减少多重射击扩散度：每点精准度降低 1 度散布角，最低为 0
-        float effectiveSpread = (float) Math.max(0, multishotSpreadPerPoint - Math.max(0, arrowAccuracy));
-
-        for (int i = 0; i < extraCount; i++) {
-            int side = (i % 2 == 0) ? -1 : 1;
-            int step = i / 2 + 1;
-            float angleDeg = side * step * effectiveSpread;
-            float angleRad = angleDeg * ((float) Math.PI / 180.0F);
-
-            // 通过 NBT 序列化/反序列化创建同类型弹射物副本，兼容模组弹射物
-            CompoundTag nbt = original.saveWithoutId(new CompoundTag());
-            nbt.remove("UUID"); // 移除 UUID 以避免冲突，create() 会分配新 UUID
-            Entity cloneEntity = original.getType().create(original.level());
-            if (!(cloneEntity instanceof Projectile cloneProjectile)) continue;
-            cloneEntity.load(nbt);
-
-            // 标记为复制品
-            CompoundTag cloneTag = cloneEntity.getPersistentData();
-            cloneTag.putBoolean(MULTISHOT_CLONE_KEY, true);
-            // 按配置决定是否继承弹射状态：弹射剩余次数/已命中列表会随 ForgeData 克隆，
-            // 继承时总弹射次数随克隆数量成倍放大（multishotCloneInheritsBounce=false 时不继承、克隆箭不弹射）
-            if (!multishotCloneInheritsBounce) {
-                cloneTag.remove(ARROW_BOUNCE_REMAINING_KEY);
-                cloneTag.remove(ARROW_BOUNCE_HIT_LIST_KEY);
-            }
-
-            // 确保所有者正确
-            cloneProjectile.setOwner(shooter);
-
-            // 用四元数绕上方向轴旋转原始方向向量，实现扇形分布
-            Quaternionf quaternion = new Quaternionf().setAngleAxis(angleRad, (float) up.x, (float) up.y, (float) up.z);
-            Vector3f rotated = dir.toVector3f().rotate(quaternion);
-
-            // 设置克隆体的方向和速度（inaccuracy=0 保证精确角度，无随机偏移）
-            cloneProjectile.shoot(rotated.x(), rotated.y(), rotated.z(), (float) speed, 0.0F);
-
-            // 负值精准度：对每个复制品施加独立的随机角度偏移
-            if (arrowAccuracy < 0) {
-                applyAccuracyOffset(cloneProjectile, arrowAccuracy);
-            }
-
-            // 箭矢类复制品标记为仅创造模式可拾取，防止刷箭
-            if (cloneEntity instanceof AbstractArrow cloneArrow) {
-                cloneArrow.pickup = AbstractArrow.Pickup.CREATIVE_ONLY;
-            }
-
-            original.level().addFreshEntity(cloneEntity);
-        }
-    }
-
-    /**
-     * 对弹射物施加随机角度偏移（仅当 arrow_accuracy < 0 时调用）。
-     * 水平方向（偏航）偏移范围：±|accuracy|/2 度
-     * 竖直方向（俯仰）偏移范围：±|accuracy|/20 度
-     */
-    private static void applyAccuracyOffset(Projectile projectile, double accuracy) {
-        double magnitude = -accuracy;
-        float yawRange = (float) (magnitude * 0.5);    // 水平 ±度
-        float pitchRange = (float) (magnitude * 0.05);  // 竖直 ±度
-
-        float yawDeg = (projectile.level().random.nextFloat() * 2.0F - 1.0F) * yawRange;
-        float pitchDeg = (projectile.level().random.nextFloat() * 2.0F - 1.0F) * pitchRange;
-
-        Vec3 motion = projectile.getDeltaMovement();
-        double speed = motion.length();
-        if (speed < 1.0E-6) return;
-
-        Vec3 dir = motion.normalize();
-
-        // 建立局部正交基：dir(前)、right(右)、up(上)
-        Vec3 worldUp = new Vec3(0, 1, 0);
-        Vec3 right = dir.cross(worldUp);
-        if (right.lengthSqr() < 1.0E-10) {
-            right = new Vec3(0, 0, 1); // 方向与世界 Y 轴平行时改用 Z 轴
-        }
-        right = right.normalize();
-        Vec3 up = right.cross(dir).normalize();
-
-        float yawRad = yawDeg * ((float) Math.PI / 180.0F);
-        float pitchRad = pitchDeg * ((float) Math.PI / 180.0F);
-
-        // 先绕 up 轴旋转（水平偏航），再绕 right 轴旋转（竖直俯仰）
-        Vector3f rotated = dir.toVector3f();
-        rotated.rotate(new Quaternionf().setAngleAxis(yawRad, (float) up.x, (float) up.y, (float) up.z));
-        rotated.rotate(new Quaternionf().setAngleAxis(pitchRad, (float) right.x, (float) right.y, (float) right.z));
-
-        projectile.setDeltaMovement(new Vec3(rotated.x(), rotated.y(), rotated.z()).scale(speed));
-    }
-
-    /**
-     * 箭矢弹射：箭矢命中生物时，若仍有弹射次数，克隆一支新箭射向最近的未命中敌人。
-     * 每次弹射后原箭矢剩余次数 -1（兼容穿透：穿透箭每命中一个目标可各触发一次弹射）。
-     */
-    private static void handleArrowBounce(AbstractArrow arrow, ProjectileImpactEvent event) {
-        // 仅服务端处理：客户端预测 tick 也会触发本事件，客户端克隆会产生幽灵箭导致不同步
-        if (arrow.level().isClientSide()) return;
-
-        CompoundTag tag = arrow.getPersistentData();
-        int remaining = tag.getInt(ARROW_BOUNCE_REMAINING_KEY);
-        if (remaining <= 0) return;
-
-        // 仅在命中生物时触发弹射
-        HitResult hitResult = event.getRayTraceResult();
-        if (hitResult.getType() != HitResult.Type.ENTITY) return;
-        if (!(hitResult instanceof EntityHitResult ehr)) return;
-        if (!(ehr.getEntity() instanceof LivingEntity currentVictim)) return;
-
-        LivingEntity shooter = arrow.getOwner() instanceof LivingEntity living ? living : null;
-        if (shooter == null) return;
-
-        // 将当前受害者加入已命中列表（避免克隆箭回头命中）
-        addBounceHitEntity(tag, currentVictim.getUUID());
-
-        // 搜索下一目标
-        LivingEntity nextTarget = findBounceTarget(arrow, shooter, currentVictim);
-        if (nextTarget == null) return;
-
-        // 克隆一支新箭射向下一目标，并递减原箭矢剩余次数
-        spawnBounceClone(arrow, shooter, nextTarget, remaining);
-        tag.putInt(ARROW_BOUNCE_REMAINING_KEY, remaining - 1);
-    }
-
-    /**
-     * 在弹射搜索范围内寻找最近的有效目标：非发射者、非当前命中链中的实体、非友方，
-     * 且为「与当前受害者同种的实体」或「敌对实体」。
-     * 射击非敌对生物（如村民、动物等测试实体）时，弹射会在同种实体间传导。
-     */
-    private static LivingEntity findBounceTarget(AbstractArrow arrow, LivingEntity shooter, LivingEntity currentVictim) {
-        Vec3 origin = arrow.position();
-        AABB box = new AABB(origin, origin).inflate(arrowBounceSearchRange);
-        CompoundTag tag = arrow.getPersistentData();
-        List<LivingEntity> candidates = arrow.level().getEntitiesOfClass(LivingEntity.class, box,
-                entity -> entity.isAlive()
-                        && entity != shooter
-                        && entity != currentVictim
-                        && !isPartner(shooter, entity)
-                        && !isBounceHitEntity(tag, entity.getUUID())
-                        && (entity instanceof Enemy || entity.getType() == currentVictim.getType()));
-        if (candidates.isEmpty()) return null;
-        candidates.sort(Comparator.comparingDouble(e -> e.distanceToSqr(origin)));
-        return candidates.get(0);
-    }
-
-    /**
-     * 通过 NBT 序列化克隆一支新箭，从命中点射向下一目标。
-     * 复用多重射击的克隆范式：标记为弹射克隆以跳过属性重复应用与再次克隆。
-     */
-    private static void spawnBounceClone(AbstractArrow original, LivingEntity shooter,
-                                         LivingEntity nextTarget, int remaining) {
-        CompoundTag nbt = original.saveWithoutId(new CompoundTag());
-        nbt.remove("UUID"); // 移除 UUID 以避免冲突，create() 会分配新 UUID
-        Entity cloneEntity = original.getType().create(original.level());
-        if (!(cloneEntity instanceof AbstractArrow clone)) return;
-        cloneEntity.load(nbt);
-
-        CompoundTag cloneTag = cloneEntity.getPersistentData();
-        // 标记为弹射克隆（跳过多重射击/箭矢属性重复处理）
-        cloneTag.putBoolean(ARROW_BOUNCE_CLONE_KEY, true);
-        // 剩余次数 -1；已命中列表随 ForgeData 克隆自动继承，无需显式复制
-        cloneTag.putInt(ARROW_BOUNCE_REMAINING_KEY, remaining - 1);
-
-        // 伤害衰减（衰减系数为全局配置，直接读取）
-        clone.setBaseDamage(clone.getBaseDamage() * arrowBounceDamageFalloff);
-
-        // 清除穿透等级：弹射链跳数由剩余次数控制，防止克隆箭穿透造成不可预测的连锁分支与残留
-        clone.setPierceLevel((byte) 0);
-
-        // 确保所有者正确
-        clone.setOwner(shooter);
-
-        // 从命中点射向下一目标躯干中心
-        Vec3 start = original.position();
-        Vec3 targetCenter = nextTarget.position().add(0, nextTarget.getBbHeight() * 0.5, 0);
-        Vec3 dir = targetCenter.subtract(start).normalize();
-        clone.setPos(start.x, start.y, start.z);
-        // 最低发射速度 1.0 保证弹射箭能飞抵目标（过慢的箭会被重力拖偏坠地）；
-        // 原版箭矢伤害 = 命中速度 × 基础伤害，速度被下限提升时按比例下调基础伤害，
-        // 保证弹射伤害仍严格按 falloff 衰减，避免远程慢箭出现越弹射伤害越高
-        double impactSpeed = original.getDeltaMovement().length();
-        double speed = Math.max(impactSpeed, 1.0);
-        if (speed > impactSpeed && impactSpeed > 0.0) {
-            clone.setBaseDamage(clone.getBaseDamage() * (impactSpeed / speed));
-        }
-        clone.shoot(dir.x, dir.y, dir.z, (float) speed, 0.0F);
-
-        // 防刷箭
-        clone.pickup = AbstractArrow.Pickup.CREATIVE_ONLY;
-
-        original.level().addFreshEntity(clone);
     }
 
     @SubscribeEvent

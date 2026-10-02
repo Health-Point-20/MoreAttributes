@@ -1,6 +1,13 @@
 {
   "more_attributes.hit_miss": "Your attacks are dodged by %s",
   "more_attributes.execute_triggered": "§cExecuted!",
+  "more_attributes.command.true_damage.query": "Current true damage tier: %s (config: %s)",
+  "more_attributes.command.true_damage.set_temp": "True damage tier temporarily set to %s (this session only; reverts to the config value on restart)",
+  "more_attributes.command.true_damage.set_permanent": "True damage tier set to %s and written to the config (permanent)",
+  "more_attributes.command.true_damage.mode.low": "0 (Low)",
+  "more_attributes.command.true_damage.mode.default": "1 (Medium)",
+  "more_attributes.command.true_damage.mode.high": "2 (High)",
+  "more_attributes.command.true_damage.mode.highest": "3 (Highest)",
 
   "attribute.modifier.potency": " Potency",
   "attribute.more_attributes.incoming_damage_cap": "Incoming Damage Cap",
@@ -43,6 +50,9 @@
   "attribute.more_attributes.damage_reflection": "Damage Reflection",
   "attribute.more_attributes.cooldown_reduction": "Cooldown Reduction",
   "attribute.more_attributes.execute_threshold": "Execute Threshold",
+  "attribute.more_attributes.melee_execute_threshold": "Melee Execute Threshold",
+  "attribute.more_attributes.ranged_execute_threshold": "Ranged Execute Threshold",
+  "attribute.more_attributes.magic_execute_threshold": "Magic Execute Threshold",
   "attribute.more_attributes.backstab_damage": "Backstab Damage",
   "attribute.more_attributes.backstab_resistance": "Backstab Resistance",
   "attribute.more_attributes.aggro": "Aggro",
@@ -61,5 +71,9 @@
   "attribute.more_attributes.self_max_health_damage": "Self Max Health Damage",
   "attribute.more_attributes.damage_sharing": "Damage Sharing",
   "attribute.more_attributes.arrow_bounce": "Arrow Bounce",
-  "attribute.more_attributes.hurt_recovery": "Hurt Recovery"
+  "attribute.more_attributes.drop_multiplier": "Drop Multiplier",
+  "attribute.more_attributes.hurt_recovery": "Hurt Recovery",
+  "attribute.more_attributes.armor_penetration": "Armor Penetration",
+  "attribute.more_attributes.protection_penetration": "Protection Penetration",
+  "attribute.more_attributes.flat_damage_reduction": "Flat Damage Reduction"
 }

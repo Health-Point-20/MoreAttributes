@@ -1,6 +1,13 @@
 {
   "more_attributes.hit_miss": "你的攻击被 %s 闪避了",
   "more_attributes.execute_triggered": "§c处决！",
+  "more_attributes.command.true_damage.query": "当前真伤档位：%s（配置文件：%s）",
+  "more_attributes.command.true_damage.set_temp": "真伤档位已临时设为 %s（仅本次游戏生效，重启后恢复配置文件的值）",
+  "more_attributes.command.true_damage.set_permanent": "真伤档位已设为 %s 并写入配置文件（永久生效）",
+  "more_attributes.command.true_damage.mode.low": "0（低）",
+  "more_attributes.command.true_damage.mode.default": "1（中）",
+  "more_attributes.command.true_damage.mode.high": "2（高）",
+  "more_attributes.command.true_damage.mode.highest": "3（最高）",
   "attribute.modifier.potency": "效力",
   "attribute.more_attributes.incoming_damage_cap": "受到伤害上限",
   "attribute.more_attributes.evasion": "闪避率",
@@ -42,6 +49,9 @@
   "attribute.more_attributes.damage_reflection": "反伤比例",
   "attribute.more_attributes.cooldown_reduction": "冷却缩减",
   "attribute.more_attributes.execute_threshold": "斩杀阈值",
+  "attribute.more_attributes.melee_execute_threshold": "近战斩杀阈值",
+  "attribute.more_attributes.ranged_execute_threshold": "远程斩杀阈值",
+  "attribute.more_attributes.magic_execute_threshold": "魔法斩杀阈值",
   "attribute.more_attributes.backstab_damage": "背刺伤害加成",
   "attribute.more_attributes.backstab_resistance": "背刺伤害抵抗",
   "attribute.more_attributes.aggro": "仇恨值",
@@ -60,5 +70,9 @@
   "attribute.more_attributes.self_max_health_damage": "自身最大生命值伤害",
   "attribute.more_attributes.damage_sharing": "伤害分摊",
   "attribute.more_attributes.arrow_bounce": "箭矢弹射",
-  "attribute.more_attributes.hurt_recovery": "受击恢复"
+  "attribute.more_attributes.drop_multiplier": "掉落物倍率",
+  "attribute.more_attributes.hurt_recovery": "受击恢复",
+  "attribute.more_attributes.armor_penetration": "护甲穿透",
+  "attribute.more_attributes.protection_penetration": "保护穿透",
+  "attribute.more_attributes.flat_damage_reduction": "固定减伤"
 }

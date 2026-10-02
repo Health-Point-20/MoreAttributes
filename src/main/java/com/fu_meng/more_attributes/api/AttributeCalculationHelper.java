@@ -404,4 +404,37 @@ public class AttributeCalculationHelper {
         return Math.max(0.0, attrValue) + damageSharingDefaultWeight;
     }
 
+    // ================= 穿透类（护甲穿透 / 保护穿透） =================
+    /**
+     * 解析穿透属性：ADDITION 为固定穿透点数，MULTIPLY_BASE/MULTIPLY_TOTAL 为百分比穿透。
+     * 负值视作不穿透，故两项分别钳制到 {@code [0, 1]} 与 {@code [0, +∞)}。
+     *
+     * @return [0] = 固定穿透点数，[1] = 百分比穿透（0~1）
+     */
+    public static double[] getPenetrationParts(AttributeInstance instance) {
+        if (instance == null) return new double[]{0.0, 0.0};
+        if (isAttributeDisabled(instance.getAttribute())) return new double[]{0.0, 0.0};
+
+        double flat = instance.getBaseValue();
+        double percentage = 0.0;
+        for (AttributeModifier modifier : instance.getModifiers()) {
+            switch (modifier.getOperation()) {
+                case ADDITION -> flat += modifier.getAmount();
+                case MULTIPLY_BASE, MULTIPLY_TOTAL -> percentage += modifier.getAmount();
+            }
+        }
+
+        return new double[]{Math.max(0.0, flat), Math.min(1.0, Math.max(0.0, percentage))};
+    }
+
+    /**
+     * 对点数施加穿透，返回穿透后的有效点数（不低于 0）。
+     * 先按百分比穿透，再扣除固定穿透点数。
+     */
+    public static double applyPenetration(double points, double[] penetration) {
+        if (points <= 0.0) return 0.0;
+        double effective = points * (1.0 - penetration[1]) - penetration[0];
+        return Math.max(0.0, effective);
+    }
+
 }

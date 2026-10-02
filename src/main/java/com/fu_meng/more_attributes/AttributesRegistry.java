@@ -143,6 +143,15 @@ public class AttributesRegistry {
     public static final RegistryObject<Attribute> EXECUTE_THRESHOLD = ATTRIBUTES.register("execute_threshold",
             () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".execute_threshold", 0.0, -1.0, MAX).setSyncable(true));
 
+    public static final RegistryObject<Attribute> MELEE_EXECUTE_THRESHOLD = ATTRIBUTES.register("melee_execute_threshold",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".melee_execute_threshold", 0.0, -1.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> RANGED_EXECUTE_THRESHOLD = ATTRIBUTES.register("ranged_execute_threshold",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".ranged_execute_threshold", 0.0, -1.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> MAGIC_EXECUTE_THRESHOLD = ATTRIBUTES.register("magic_execute_threshold",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".magic_execute_threshold", 0.0, -1.0, MAX).setSyncable(true));
+
     public static final RegistryObject<Attribute> BACKSTAB_DAMAGE = ATTRIBUTES.register("backstab_damage",
             () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".backstab_damage", 0.0, 0.0, MAX).setSyncable(true));
 
@@ -200,6 +209,18 @@ public class AttributesRegistry {
     public static final RegistryObject<Attribute> ARROW_BOUNCE = ATTRIBUTES.register("arrow_bounce",
             () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".arrow_bounce", 0.0, 0.0, MAX).setSyncable(true));
 
+    public static final RegistryObject<Attribute> DROP_MULTIPLIER = ATTRIBUTES.register("drop_multiplier",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".drop_multiplier", 1.0, 0.0, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> ARMOR_PENETRATION = ATTRIBUTES.register("armor_penetration",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".armor_penetration", 0.0, MIN, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> PROTECTION_PENETRATION = ATTRIBUTES.register("protection_penetration",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".protection_penetration", 0.0, MIN, MAX).setSyncable(true));
+
+    public static final RegistryObject<Attribute> FLAT_DAMAGE_REDUCTION = ATTRIBUTES.register("flat_damage_reduction",
+            () -> new RangedAttribute("attribute." + MoreAttributesMod.MODID + ".flat_damage_reduction", 0.0, 0.0, MAX).setSyncable(true));
+
     @SubscribeEvent
     public static void addAttributes(EntityAttributeModificationEvent event) {
         List<RegistryObject<Attribute>> attributesForLiving = Arrays.asList(
@@ -252,7 +273,11 @@ public class AttributesRegistry {
                 LOST_HEALTH_DAMAGE,
                 SELF_MAX_HEALTH_DAMAGE,
                 DAMAGE_SHARING,
-                ARROW_BOUNCE
+                ARROW_BOUNCE,
+                DROP_MULTIPLIER,
+                ARMOR_PENETRATION,
+                PROTECTION_PENETRATION,
+                FLAT_DAMAGE_REDUCTION
         );
 
         List<RegistryObject<Attribute>> attributesForPlayer = Arrays.asList(
