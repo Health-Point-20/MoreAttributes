@@ -1,5 +1,6 @@
 package com.fu_meng.more_attributes.api;
 
+import com.fu_meng.more_attributes.MoreAttributesMod;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
@@ -105,27 +106,51 @@ public class HurtManager {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
+        if (extraHurtQueue.isEmpty()) return;
 
+        // 这个标志是「正在结算额外伤害」的全局守卫，会直接决定 AttributesHandler.onHurt 里
+        // 真伤分支是否执行（`!isOnDealExtraDamage()`）。原来它是裸赋值：
+        //     onDealExtraDamage = true; ... processExtraHurt(...) ...; onDealExtraDamage = false;
+        // 而 processExtraHurt 会调用 target.hurt(...)，模组覆写的 hurt 抛异常很常见（本模组的
+        // 真伤结算自己也会走这条路），一旦抛出，最后那句复位就永远不执行 —— 标志永久停在 true，
+        // 于是「打过一次之后，无论过多久、换哪只怪，真伤都不再触发，且没有任何日志」。
+        // 修法：① try/finally 保证复位；② 保存/恢复原值以兼容嵌套；③ 单个目标出错不影响其余目标。
+        boolean previous = onDealExtraDamage;
         onDealExtraDamage = true;
-        for (LivingEntity target : new HashSet<>(extraHurtQueue.keySet())) {
-            if (!target.isAlive()) {
-                extraHurtQueue.remove(target);
-            } else {
-                List<ExtraHurtData> extraHurtDataList = extraHurtQueue.get(target);
-
-                if (extraHurtDataList == null) continue;
-
-                for (ExtraHurtData extraHurtData : extraHurtDataList) {
-                    if (extraHurtData != null) {
-                        // 处理额外伤害
-                        processExtraHurt(target, extraHurtData);
+        try {
+            for (LivingEntity target : new HashSet<>(extraHurtQueue.keySet())) {
+                try {
+                    if (!target.isAlive()) {
+                        extraHurtQueue.remove(target);
+                        continue;
                     }
+                    List<ExtraHurtData> extraHurtDataList = extraHurtQueue.get(target);
+                    if (extraHurtDataList == null) continue;
+
+                    for (ExtraHurtData extraHurtData : extraHurtDataList) {
+                        if (extraHurtData != null) {
+                            // 处理额外伤害
+                            processExtraHurt(target, extraHurtData);
+                        }
+                    }
+                    // 清除此实体的额外伤害数据
+                    extraHurtQueue.remove(target);
+                } catch (Throwable t) {
+                    // 单个目标的额外伤害结算失败：跳过它，但绝不能污染守卫标志与剩余队列
+                    rethrowIfFatal(t);
+                    extraHurtQueue.remove(target);
+                    MoreAttributesMod.LOGGER.warn("[额外伤害] 结算失败已跳过：{}（{}）",
+                            target.getName().getString(), t.toString());
                 }
-                // 清除此实体的额外伤害数据
-                extraHurtQueue.remove(target);
             }
+        } finally {
+            onDealExtraDamage = previous;
         }
-        onDealExtraDamage = false;
+    }
+
+    /** OOM/StackOverflow 这类致命错误不应被安静吞掉 */
+    private static void rethrowIfFatal(Throwable t) {
+        if (t instanceof VirtualMachineError error) throw error;
     }
 
     /**

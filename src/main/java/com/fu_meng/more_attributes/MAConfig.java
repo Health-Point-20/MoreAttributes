@@ -49,7 +49,8 @@ public class MAConfig {
 
     public static boolean hungerRateAffectRegeneration;
     public static boolean regenPerTick;
-    public static TrueDamageMode trueDamageMode = TrueDamageMode.DEFAULT;
+    /** 当前生效的真伤档位（指令可运行时修改、预热线程也会读取，故 volatile） */
+    public static volatile TrueDamageMode trueDamageMode = TrueDamageMode.DIRECT;
     public static boolean unlimitedLifeSteal;
     public static boolean unlimitedSplashDamage;
     public static boolean ApotheosisCritCompatibility;
@@ -70,12 +71,10 @@ public class MAConfig {
     public static double arrowBounceDamageFalloff;
     public static Set<ResourceLocation> executeThresholdBlacklist;
     private static volatile Set<ResourceLocation> disabledAttributes;
-    /** 固定减伤属性减伤后至少保留的伤害值 */
     public static double flatDamageReductionMinDamage;
-    /** 固定减伤属性是否同样减少环境伤害 */
     public static boolean flatDamageReductionAffectsEnvironmental;
-    /** 真伤强制写入的行为探针诊断日志开关（排查“扣血无效”时打开） */
-    public static boolean debugProbes;
+    /** 真伤强制写入的行为探针诊断日志开关（排查“扣血无效”时打开；被预热线程读取，故 volatile） */
+    public static volatile boolean debugProbes;
 
     static {
         BUILDER.push("More Attributes Config");
@@ -83,17 +82,20 @@ public class MAConfig {
         REGEN_PER_TICK = BUILDER.comment("When true, the regeneration attribute heals 1/20 of its value every tick (smoothed across the second, current default behavior). When false, the full attribute value is healed once per second (in a single burst every 20 ticks).").comment("再生属性回血模式。true时每tick恢复属性值的1/20（平摊到整秒，即当前默认行为）；false时每秒按完整属性值集中恢复一次（每20tick触发一次）").define("regenPerTick", true);
         TRUE_DAMAGE_MODE = BUILDER.comment(
                 "True damage tier: higher tiers cover more mobs.",
-                "0 (low): most mobs; tops up the true damage.",
-                "1 (medium): almost all mobs; rewrites health via reflection.",
-                "2 (high): nearly every mob; also rewrites custom health.",
-                "3 (highest): every mob whose health is not fixed."
+                "0 (PIPELINE): most mobs; only tops up the true damage through the vanilla damage pipeline.",
+                "1 (DIRECT): almost all mobs; rewrites health via reflection (setHealth + vanilla sync mirror).",
+                "2 (PROBE): nearly every mob; also probes custom fields and walks the object graph.",
+                "3 (STORE): tier 2 plus every layer that does NOT cause a big stall: referenced static tables, counter-style health writers, encrypted strings, encoded/decoded health fields and holder read-write ports. Candidates come from the entity's own constant pool (depth 3) only - the mod's jar is never read. Death protection is still respected. From this tier on, discovery also runs ahead of combat (right after the entity joins the world) so the FIRST hit takes effect immediately.",
+                "4 (FULL): tier 3 plus the expensive layers: the mod's own health writers (depth 4 / up to 4096 classes), shadow stores, MAC-protected authority records, authority cipher swap (these three also harvest the owning mod's jar), cipher-operator calibration and hidden state frames; also the only tier that enables the aggressive-discovery fallbacks, and it bypasses death protection."
         ).comment(
-                "真伤档位：档位越高，生效范围越广。",
-                "0（低）：对大部分生物生效，尝试补足真伤部分的伤害。",
-                "1（中）：对绝大部分生物生效，用反射改写生命值来附加真伤。",
-                "2（高）：对基本所有生物生效，会尝试改写生物的自定义血量。",
-                "3（最高）：对所有生命值非固定的生物生效。"
-        ).defineInRange("trueDamageMode", 1, 0, 3);
+                "真伤档位：档位越高，生效范围越广（同时开销与风险也越大）。",
+                "0（PIPELINE）：对大部分生物生效，真伤只并入原版伤害管线。",
+                "1（DIRECT）：对绝大部分生物生效，脱管线直写生命值 + 原版同步镜像。",
+                "2（PROBE）：对基本所有生物生效，会尝试改写生物的自定义血量（类字段探针 + 对象图遍历）。",
+                "3（STORE）：在档 2 基础上增加所有「不会造成大量卡顿」的层：引用类静态表、计数型血量写入口、加密字符串血量、编解码血量字段、持有对象读写口。候选只来自实体自身的常量池（深度 3），不读模组文件、不做高次标定，也仍然尊重不死图腾与死亡保护。本档起在实体进入世界后提前发现，首击当次生效。",
+                "4（FULL，完全体）：在档 3 基础上再增加会明显卡顿的层：模组血量写入口（深度 4 / 最多 4096 类）、影子血量单例、MAC 权威记录、模组权威密文互换（这三层还要收割实体所属模组的 jar）、密文串算子标定、隐藏状态帧直写，并绕过死亡保护。注意：「激进发现兜底」已硬关（它会拿猜出来的实参真实调用对方方法，实测打坏过目标与世界）。"
+        ).defineInRange("trueDamageMode", 1, 0, 4);
+
         UNLIMITED_LIFE_STEAL = BUILDER.comment("Can life-steal absorb more health points than causing damage?").comment("生命窃取能否吸取比造成伤害更多的血量").define("unlimitedLiftSteal", false);
         UNLIMITED_SPLASH_DAMAGE = BUILDER.comment("Can melee splash damage more than causing damage?").comment("近战伤害溅射能溅射比造成伤害更高的伤害").define("unlimitedSplashDamage", false);
         APOTHEOSIS_CRIT_COMPATIBILITY = BUILDER.comment("Whether to stack this mod's crit chance and crit damage onto Apotheosis's corresponding attributes.").comment("是否将本模组的暴击率和暴击伤害属性值叠加到神化模组的对应属性上").define("apotheosisCritCompatibility", false);
@@ -188,9 +190,6 @@ public class MAConfig {
         debugProbes = DEBUG_PROBES.get();
     }
 
-    /**
-     * 判断属性是否被禁用
-     */
     public static boolean isAttributeDisabled(Attribute attribute) {
         if (disabledAttributes.isEmpty()) return false;
         ResourceLocation key = ForgeRegistries.ATTRIBUTES.getKey(attribute);
@@ -199,8 +198,7 @@ public class MAConfig {
 
     /**
      * 运行时设置真伤档位（供游戏内指令调用）。
-     *
-     * @param id        目标档位（0-3，越界时回退到默认档）
+     * @param id 目标档位 0-4；负数回退默认档，过大钳到最高档
      * @param permanent true 时同时写入配置文件，重启后仍生效；false 仅本次游戏生效
      * @return 实际生效的档位
      */
@@ -208,7 +206,7 @@ public class MAConfig {
         TrueDamageMode mode = TrueDamageMode.byId(id);
         trueDamageMode = mode;
         if (permanent && SPEC.isLoaded()) {
-            TRUE_DAMAGE_MODE.set(mode.ordinal());
+            TRUE_DAMAGE_MODE.set(mode.id());
             SPEC.save();
         }
         return mode;
@@ -221,7 +219,6 @@ public class MAConfig {
             if (loc != null) {
                 result.add(loc);
             } else {
-                // 记录错误日志，方便玩家排查配置问题
                 MoreAttributesMod.LOGGER.error("Invalid ResourceLocation format in config: '{}'. Skipping.", s);
             }
         }
@@ -229,57 +226,165 @@ public class MAConfig {
     }
 
     /**
-     * 真伤强制写入深度分级。每一档在上一档基础上增加一层兜底，覆盖更广、开销更大：
-     * <ul>
-     *   <li>{@link #LOW} 档 0：真伤并入事件伤害，走原版管线（原版兼容）。</li>
-     *   <li>{@link #DEFAULT} 档 1：脱离管线强制写入，仅 {@code setHealth} + 原版同步血量。</li>
-     *   <li>{@link #HIGH} 档 2：档 1 再加类字段探针与深度对象图遍历（纯反射，不加载引用类、不用 Unsafe）。</li>
-     *   <li>{@link #HIGHEST} 档 3：档 2 再加引用类静态表查找（字节码 + Unsafe）与加密血量字符串改写，
-     *       并绕过死亡保护。</li>
-     * </ul>
-     * 无敌帧不再是分档维度：档 1 及以上恒定足额结算、不参与原版无敌帧
-     * （档 0 走原版管线，自然受其约束）。
+     * 真伤强制写入深度分级：id 0~4 不变，每档在上一档基础上加一层兜底，覆盖更广、开销与风险更大。
+     * 1) {@link #PIPELINE} 档 0：真伤并入事件伤害，只走原版伤害管线。
+     * 2) {@link #DIRECT} 档 1：脱离管线，只 {@code setHealth} + 原版同步血量镜像。
+     * 3) {@link #PROBE} 档 2：再加类字段探针与深度对象图遍历（纯反射，不加载引用类、不用 Unsafe）。
+     * 4) {@link #STORE} 档 3：再加所有不造成大量延迟的层：引用类静态表直写、计数型写入口、加密字符串血量、
+     *    数值与字符串编解码字段（含注销外部权威缓存）、持有对象读写口。候选只来自「实体常量池（深度 3）+ 嵌套类」，
+     *    不读模组文件，也不做高次标定，冷启动开销有界，并仍尊重死亡保护；本档起启用「提前发现」
+     *    （{@link #preDiscoversOnJoin()}）：实体进场后的下一个服务端 tick 跑完发现，首击当次生效。
+     * 5) {@link #FULL} 档 4（完全体）：再加会明显卡顿的层：模组血量写入口（深度 4 / 最多 4096 类）、影子血量单例、
+     *    校验(MAC)权威记录、模组权威密文互换（这三层要收割实体所属模组的 jar，最多读 64 MiB class 字节）、
+     *    密文串算子现场标定（最多 4096 次试调用）、隐藏状态帧直写；并绕过死亡保护（图腾无效、他模组对本模组
+     *    造成的死亡无法取消）。本档的「激进发现兜底」已硬关，原因见 {@link #allowsAggressiveDiscovery()}。
+     * 无敌帧不再是分档维度：档 1 及以上恒定足额结算、不参与原版无敌帧，档 0 走原版管线自然受其约束。
      */
     public enum TrueDamageMode {
-        LOW,
-        DEFAULT,
-        HIGH,
-        HIGHEST;
+        /** 档 0：只走原版伤害管线 */
+        PIPELINE(0),
+        /** 档 1：脱管线，只直写 setHealth + 原版同步镜像 */
+        DIRECT(1),
+        /** 档 2：+ 类字段探针 + 深度对象图 */
+        PROBE(2),
+        /** 档 3：+ 模组自有存储（静态表/计数写口/密文/编解码/持有对象）+ 提前发现 */
+        STORE(3),
+        /** 档 4：+ 影子/MAC 权威/模组权威/写入口/算子/状态帧/绕过死亡保护 + 提前发现 */
+        FULL(4);
 
-        /** 按配置 ID 取档位，越界或非法值回退到默认档 {@link #DEFAULT} */
+        /** 「激进发现兜底」内部开关：保持 false，不加配置项，见 {@link #allowsAggressiveDiscovery()} */
+        private static final boolean AGGRESSIVE_DISCOVERY_ENABLED = false;
+
+        private static final TrueDamageMode[] VALUES = values();
+
+        private final int id;
+
+        TrueDamageMode(int id) {
+            this.id = id;
+        }
+
+        /** 配置里使用的档位编号（与枚举声明顺序解耦） */
+        public int id() {
+            return id;
+        }
+
+        /** 按配置 ID 取档位：负数回落默认档，超过最高档时钳到最高档 */
         public static TrueDamageMode byId(int id) {
-            TrueDamageMode[] values = values();
-            return id >= 0 && id < values.length ? values[id] : DEFAULT;
+            for (TrueDamageMode mode : VALUES) {
+                if (mode.id == id) return mode;
+            }
+            // 不要因为「读到一个未来版本的更大数字」把最高档静默降成默认档
+            return id < 0 ? DIRECT : FULL;
+        }
+
+        /** 档 3/4 共有的廉价层（不读模组文件、不做高次标定） */
+        private boolean isCheapOrAbove() {
+            return this == STORE || this == FULL;
+        }
+
+        /**
+         * 是否在实体进入世界后「提前发现」（档 3/4）：实体进场后的下一个服务端 tick，跑完首击本该现场做的
+         * 行为发现，使首击当次生效。发现成本只能变便宜或提前到非战斗时刻，绝不能摊销到后续攻击。
+         */
+        public boolean preDiscoversOnJoin() {
+            return isCheapOrAbove();
+        }
+
+        /** 是否启用常量池指纹情报层（门控预判 / 候选重排；只做情报，从不写血） */
+        public boolean usesPoolIntel() {
+            return isCheapOrAbove();
+        }
+
+        /**
+         * 是否启用「激进发现兜底」的内部谓词：当前恒为 false（{@code AGGRESSIVE_DISCOVERY_ENABLED}），
+         * 不加配置项；关闭原因见方法体注释。
+         */
+        public boolean allowsAggressiveDiscovery() {
+            // 已硬关：这个兜底会拿猜出来的实参真实调用候选类的任意 void/boolean 静态方法，实测打坏过
+            // 实体与世界（实体被搬动、同类实体重复注册、MAC 权威被伪造成满血），收益不值得，keep false。
+            return AGGRESSIVE_DISCOVERY_ENABLED;
         }
 
         /** 是否脱离伤害管线独立结算真伤 */
         public boolean bypassesPipeline() {
-            return this != LOW;
+            return this != PIPELINE;
         }
 
         /** 是否做类字段探针与深度对象图遍历（纯反射兜底） */
         public boolean probesHealthBacking() {
-            return this == HIGH || this == HIGHEST;
+            return this == PROBE || isCheapOrAbove();
         }
 
         /** 是否解析实体字节码常量池、在可达模组的静态表里查找并直写血量（依赖 Unsafe） */
         public boolean searchesReferencedTables() {
-            return this == HIGHEST;
+            return isCheapOrAbove();
         }
 
         /** 是否改写「加密字符串血量」（用实体自己的加/解密方法还原明文后重写密文） */
         public boolean rewritesEncryptedHealth() {
-            return this == HIGHEST;
+            return isCheapOrAbove();
         }
 
-        /** 是否调用「模组自己的血量写入口」（血量存在混淆位池 / 堆外内存等无法直接写的存储里时） */
+        /** 是否改写「数值↔字符串编解码血量字段」并注销其外部权威缓存 */
+        public boolean rewritesEncodedHealth() {
+            return isCheapOrAbove();
+        }
+
+        /** 是否调用「模组自己的计数设定入口」（只扫实体继承链 + 嵌套类，开销小） */
+        public boolean invokesCounterWriters() {
+            return isCheapOrAbove();
+        }
+
+        /** 是否用「持有对象读写口」穿透调用方栈门控（有界引用 BFS + 行为探针） */
+        public boolean invokesHolderWriters() {
+            return isCheapOrAbove();
+        }
+
+        /** 是否调用「模组自己的血量写入口」（深度 4 / 最多 4096 类的宽扫描，冷启动开销大） */
         public boolean invokesHealthWriters() {
-            return this == HIGHEST;
+            return this == FULL;
+        }
+
+        /**
+         * 是否扫描「代管血量」核心类：影子血量单例 / 校验(MAC)权威记录 / 模组权威密文互换。
+         * 这三层需要把实体所属模组的 jar 收割成候选类名（最多读 64 MiB class 字节），因此只在完全体开启。
+         */
+        public boolean searchesModHealthCore() {
+            return this == FULL;
+        }
+
+        /**
+         * 是否允许「权威累计值口径的补判」（{@code AuthorityHealthLayer.authorityStillAbove}）：档 3/4。
+         * 便宜层可以把 {@code getHealth()} 改到达标，却动不了模组自己的权威累计值 acc，而对方的死亡判据与
+         * 自己的读数都读 acc，于是会出现「我们以为写好了，对方既不掉读数也不死」。档 4 本来就会常规跑权威
+         * 写入层，本条只是补一个判据；档 3 仅在 acc 口径仍未到位时额外给一次机会。
+         */
+        public boolean correctsAuthorityAccumulator() {
+            return isCheapOrAbove();
+        }
+
+        /** 是否做「密文串血量」的调用式现场标定（最多 4096 次试调用） */
+        public boolean calibratesCipherOperator() {
+            return this == FULL;
+        }
+
+        /** 是否直写「隐藏状态帧」（嵌套类结构发现 + 造帧标定，最重的一层） */
+        public boolean writesHiddenStateFrame() {
+            return this == FULL;
         }
 
         /** 是否绕过死亡保护（不死图腾 + 他模组对死亡事件的取消） */
         public boolean ignoresDeathProtection() {
-            return this == HIGHEST;
+            return this == FULL;
+        }
+
+        /**
+         * 是否需要「战斗外预热」：档 3/4 都要（要先枚举「常量池可达类 + 嵌套类」、把实体所属模组的 jar
+         * 收割成候选），档 0/1/2 不预热以免无谓的类加载开销。与 {@link #preDiscoversOnJoin()} 同域但必须
+         * 分开：本谓词是后台线程上的只读结构准备，后者是服务端 tick 上的行为发现（native 调用只能在服务端线程跑）。
+         */
+        public boolean needsWarmup() {
+            return isCheapOrAbove();
         }
     }
 }

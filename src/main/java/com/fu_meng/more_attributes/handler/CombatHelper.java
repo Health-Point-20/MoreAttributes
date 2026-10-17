@@ -7,27 +7,29 @@ import net.minecraft.world.entity.OwnableEntity;
 import net.minecraft.world.entity.player.Player;
 
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 多个事件处理器共享的战斗判定与记录状态：
  * 弹射物命中记录、近战闪避记录、闪避掷骰、友方判定。
+ * <p>
+ * 真伤结算位于 {@code com.fu_meng.more_attributes.truedamage} 包，需要读取本类记录的
+ * 近战冷却比例与闪避记录，因此类本身与下列三个成员是 public 的；其余成员仍保持包内可见。
  */
-final class CombatHelper {
+public final class CombatHelper {
     // Map<弹射物, 受击者>
     // ProjectileImpactEvent 中登记（服务端），LivingAttackEvent 中消费并移除
     static final Map<UUID, UUID> PROJECTILE_RECORD = new ConcurrentHashMap<>();
 
     // 本 tick 内被闪避的近战目标（其 hurt 被取消），不应参与真伤兜底结算
-    static final Map<UUID, UUID> DODGED_MELEE = new ConcurrentHashMap<>();
+    public static final Map<UUID, UUID> DODGED_MELEE = new ConcurrentHashMap<>();
 
     // 记录玩家本次挥击的攻击冷却比例（AttackEntityEvent 触发时记录）。
     // Forge 将 resetAttackStrengthTicker 移至 attack() 末尾，伤害事件期间仍能读到真实冷却；
     // 但 tick 末的近战真伤兜底结算发生时 reset 已执行（计时器进入新冷却期），
     // 需用此记录回溯本次挥击的冷却
-    static final Map<UUID, Float> ATTACK_STRENGTH_RECORD = new ConcurrentHashMap<>();
+    public static final Map<UUID, Float> ATTACK_STRENGTH_RECORD = new ConcurrentHashMap<>();
 
     private CombatHelper() {
     }
@@ -36,7 +38,7 @@ final class CombatHelper {
      * 攻击冷却伤害系数：0.2 + 冷却比例² × 0.8（冷却为 0 时 20%，满冷却 100%），
      * 与原版 Player.attack 对基础伤害的冷却缩减公式一致。
      */
-    static float getMeleeCooldownFactor(float attackStrengthScale) {
+    public static float getMeleeCooldownFactor(float attackStrengthScale) {
         return 0.2F + attackStrengthScale * attackStrengthScale * 0.8F;
     }
 
@@ -45,7 +47,7 @@ final class CombatHelper {
      * 仅可在攻击流程内调用（resetAttackStrengthTicker 之前）；
      * tick 末兜底结算时计时器已重置，须改用 {@link #ATTACK_STRENGTH_RECORD} 记录的冷却比例。
      */
-    static float getMeleeCooldownFactor(LivingEntity attacker) {
+    public static float getMeleeCooldownFactor(LivingEntity attacker) {
         if (!(attacker instanceof Player player)) return 1.0F;
         return getMeleeCooldownFactor(player.getAttackStrengthScale(0.5F));
     }

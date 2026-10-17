@@ -1,6 +1,5 @@
 package com.fu_meng.more_attributes.mixin;
 
-import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;

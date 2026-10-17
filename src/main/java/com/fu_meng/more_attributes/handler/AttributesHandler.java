@@ -1,9 +1,11 @@
 package com.fu_meng.more_attributes.handler;
 
 import com.fu_meng.more_attributes.MAConfig;
+import com.fu_meng.more_attributes.MoreAttributesMod;
 import com.fu_meng.more_attributes.api.AttributeCalculationHelper;
 import com.fu_meng.more_attributes.api.HurtManager;
 import com.fu_meng.more_attributes.mixin.MeleeAttackGoalAccessor;
+import com.fu_meng.more_attributes.truedamage.StrongTrueDamageHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
@@ -144,6 +146,10 @@ public class AttributesHandler {
             long lastHurtTime = HURT_RECORD.getOrDefault(victim.getUUID(), 0L);
             long currentTime = victim.level().getGameTime();
             if (currentTime - lastHurtTime < minimumInjuryInterval) {
+                if (MAConfig.debugProbes) {
+                    MoreAttributesMod.LOGGER.info("[真伤] 攻击被最小受伤间隔拦截：目标={} 间隔={} 距上次={}",
+                            victim.getName().getString(), minimumInjuryInterval, currentTime - lastHurtTime);
+                }
                 event.setCanceled(true);
             } else {
                 HURT_RECORD.put(victim.getUUID(), currentTime);
@@ -164,6 +170,10 @@ public class AttributesHandler {
         try {
             if (CombatHelper.rollDodge(attacker, victim)) {
                 CombatHelper.DODGED_MELEE.put(victim.getUUID(), attacker.getUUID());
+                if (MAConfig.debugProbes) {
+                    MoreAttributesMod.LOGGER.info("[真伤] 攻击被判为闪避（后续真伤兜底会跳过）：目标={} 攻击者={}",
+                            victim.getName().getString(), attacker.getName().getString());
+                }
                 event.setCanceled(true);
                 return; // 已闪避，不再进行伤害记录
             }
@@ -181,6 +191,12 @@ public class AttributesHandler {
         DamageSource source = event.getSource();
         LivingEntity attacker = source.getEntity() instanceof LivingEntity entity ? entity : null;
         float damage = event.getAmount();
+        if (MAConfig.debugProbes) {
+            MoreAttributesMod.LOGGER.info("[真伤] onHurt 进入：目标={} 伤害={} 攻击者={} 额外伤害处理中={} 已取消={}",
+                    victim.getName().getString(), damage,
+                    attacker == null ? "null" : attacker.getName().getString(),
+                    HurtManager.isOnDealExtraDamage(), event.isCanceled());
+        }
 
         // 处理无敌时间
         double invincibleTimeRate = victim.getAttributeValue(INVINCIBLE_TIME.get());
@@ -438,10 +454,35 @@ public class AttributesHandler {
                 // 档 1/2/3：复用真伤的强制扣血路径：覆写了 setHealth 的自定义 Boss 也能被处决
                 // 特别处理自定义npc（不调用 die），避免出现双倍掉落
                 boolean isCustomNpc = EntityType.getKey(victim.getType()).getNamespace().equals("customnpcs");
-                StrongTrueDamageHelper.applyStrongerTrueDamage(victim, victim.getHealth(), event.getSource(), !isCustomNpc);
-                event.setCanceled(true);
-                return;
+                boolean executed = StrongTrueDamageHelper.applyStrongerTrueDamage(
+                        victim, victim.getHealth(), event.getSource(), !isCustomNpc);
+                boolean killed = !victim.isAlive() || victim.isDeadOrDying() || victim.getHealth() <= 0.0F;
+                if (MAConfig.debugProbes) {
+                    MoreAttributesMod.LOGGER.info(
+                            "[真伤] 处决分支：目标={} 阈值={} 当前血量={} 处决返回={} 已致死={}",
+                            victim.getName().getString(), executeThreshold, victim.getHealth(), executed, killed);
+                }
+                if (executed && killed) {
+                    event.setCanceled(true);
+                    return;
+                }
+                // 处决没真正生效（模组自己的血量存储/不可移除机制挡住了，例如 omni 铁傀儡）：
+                // 绝不能就这样吞掉这次命中——否则该目标会陷入「每一击都被判为处决、但每次都打不死，
+                // 且普通真伤分支被 return 跳过」的死循环，表现为「打过一次之后对它再也无效」。
+                // 这里继续往下走常规真伤路径（转化真伤 / 额外真伤）。
             }
+        }
+
+        if (MAConfig.debugProbes) {
+            MoreAttributesMod.LOGGER.info(
+                    "[真伤] 真伤分支判定：目标={} 攻击者={} 额外伤害处理中={} 记录={} 转化比例={} 额外真伤属性={} 事件伤害={} 已取消={}",
+                    victim.getName().getString(),
+                    attacker == null ? "null" : attacker.getName().getString(),
+                    isOnDealExtraDamage(),
+                    attacker == null ? -1f : DAMAGE_RECORD.getOrDefault(attacker.getUUID(), -1f),
+                    attacker == null ? -1d : attacker.getAttributeValue(TRUE_DAMAGE_RATIO.get()),
+                    attacker == null ? -1d : attacker.getAttributeValue(EXTRA_TRUE_DAMAGE.get()),
+                    event.getAmount(), event.isCanceled());
         }
 
         // 处理伤害转化与额外真伤/额外魔法伤害
@@ -495,6 +536,14 @@ public class AttributesHandler {
             // 真伤独立结算（按档位决定强制写入深度与是否绕过死亡保护）
             if (directTrueDamage > 0) {
                 StrongTrueDamageHelper.applyStrongerTrueDamage(victim, directTrueDamage, event.getSource());
+            } else if (MAConfig.debugProbes) {
+                // 诊断：本来该有真伤（配了转化比例/额外真伤）却一点都没算出来，
+                // 说明伤害记录缺失（DAMAGE_RECORD）或事件量被削到 0——这是「第二次打不触发」类问题的线索。
+                MoreAttributesMod.LOGGER.info(
+                        "[真伤] 本次未产生真伤：目标={} 事件伤害={} 记录={} 转化比例={} 额外真伤因子={} 已取消={}",
+                        victim.getName().getString(), damage,
+                        DAMAGE_RECORD.getOrDefault(attacker.getUUID(), 0f),
+                        trueDamageRatio, extraDamageFactor, event.isCanceled());
             }
 
             // 处理额外魔法伤害
