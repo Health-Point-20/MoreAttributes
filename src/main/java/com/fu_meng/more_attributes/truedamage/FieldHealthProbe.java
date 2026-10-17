@@ -940,5 +940,9 @@ final class FieldHealthProbe {
             entries = matched;
             return matched;
         }
+
+        public Class<?> getValueType() {
+            return valueType;
+        }
     }
 }

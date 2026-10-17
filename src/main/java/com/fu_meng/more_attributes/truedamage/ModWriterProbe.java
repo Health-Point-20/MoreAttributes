@@ -984,8 +984,8 @@ final class ModWriterProbe {
         return readViaHolderReader(victim, plans.get(0).reader());
     }
 
-    /** 该类实体的持有对象读写口（首次触发才探测）；锚点无效时不缓存 */
-    /** A：在「满血退化锚点」下建出的方案（锚点一旦离开满血就丢弃重探一次） */
+    /** 该类实体的持有对象读写口（首次触发才探测）；锚点无效时不缓存
+     * A：在「满血退化锚点」下建出的方案（锚点一旦离开满血就丢弃重探一次） */
     private static final Set<Class<?>> HOLDER_FULL_ANCHOR_PLANS = ConcurrentHashMap.newKeySet();
 
     static List<HolderPlan> holderPlans(LivingEntity victim) {
